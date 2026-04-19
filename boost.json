@@ -1,0 +1,12 @@
+{
+    "agents": [
+        "junie"
+    ],
+    "guidelines": true,
+    "mcp": true,
+    "nightwatch_mcp": false,
+    "sail": true,
+    "skills": [
+        "laravel-best-practices"
+    ]
+}
