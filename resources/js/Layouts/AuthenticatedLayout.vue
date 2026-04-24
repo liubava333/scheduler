@@ -1,12 +1,16 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 import Dropdown from '@/Components/Dropdown.vue';
 import DropdownLink from '@/Components/DropdownLink.vue';
 import NavLink from '@/Components/NavLink.vue';
 import ResponsiveNavLink from '@/Components/ResponsiveNavLink.vue';
 import { Link } from '@inertiajs/vue3';
+import { usePage } from '@inertiajs/vue3';
 
+const page = usePage();
+const flashSuccess = computed(() => page.props.flash.success);
+const flashError = computed(() => page.props.flash.error);
 const showingNavigationDropdown = ref(false);
 </script>
 
@@ -188,7 +192,16 @@ const showingNavigationDropdown = ref(false);
                     <slot name="header" />
                 </div>
             </header>
-
+            <div v-if="flashSuccess" class="max-w-7xl mx-auto mt-4 px-4 sm:px-6 lg:px-8">
+                <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative">
+                    {{ flashSuccess }}
+                </div>
+            </div>
+            <div v-if="flashError" class="max-w-7xl mx-auto mt-4 px-4 sm:px-6 lg:px-8">
+                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative">
+                    {{ flashError }}
+                </div>
+            </div>
             <!-- Page Content -->
             <main>
                 <slot />

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\HoursController;
 use App\Http\Controllers\ProfileController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
@@ -24,4 +25,6 @@ Route::middleware('auth')->group(function () {
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });
 
+Route::get('/hours', [HoursController::class, 'index'])->name('hours.index');
+Route::post('/hours', [HoursController::class, 'store'])->name('hours.store');
 require __DIR__.'/auth.php';
