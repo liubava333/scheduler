@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import { useForm, router } from '@inertiajs/vue3';
+import { useForm, usePage, router } from '@inertiajs/vue3';
 import {DayPilot, DayPilotCalendar, DayPilotMonth, DayPilotNavigator} from '@daypilot/daypilot-lite-vue';
 import {ref, onMounted} from 'vue';
 import CalendarEvent from "@/Components/CalendarEvent.vue";
@@ -11,14 +11,18 @@ const startDate = ref(DayPilot.Date.today());
 const dayRef = ref(null);
 const weekRef = ref(null);
 const monthRef = ref(null);
-const notEnableCells = "#f1efef";
+const colorNotEnabledCells = "#f1efef";
 const pastCells = ref([]);
 const nonWorkingCells = ref([]);
-const form = useForm('post', route('hours.store'),{
-    weekdayStart: '',
-    weekdayEnd: '',
-    weekendStart: '',
-    weekendEnd: '',
+const enabledCells = ref([]);
+let lastClickedBadge = null;
+const page = usePage();
+const hours = page.props.hours; // Proxy об'єкт
+const form = useForm('post', route('dashboard.store'),{
+    weekdayStart: hours?.[0]?.weekday_start || '',
+    weekdayEnd: hours?.[0]?.weekday_end || '',
+    weekendStart: hours?.[0]?.weekend_start || '',
+    weekendEnd: hours?.[0]?.weekend_end || '',
 });
 const colors = [
     {name: "Green", id: "#93c47d"},
@@ -31,34 +35,100 @@ const colors = [
 const onBeforeCellRender = async (args) => {
     // make pastCells
     if (args.cell.start < DayPilot.Date.now()) {
-        args.cell.properties.backColor = notEnableCells;
+        args.cell.properties.backColor = colorNotEnabledCells;
         pastCells.value.push(args.cell.start);
-    }
-
-    // make nonWorkingCells
-    const dayOfWeek = args.cell.start.getDayOfWeek(); // 0 - Нд, 1 - Пн... 6 - Сб
-    const hour = args.cell.start.getHours();
-
-    const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
-    // Define reactive state for hours
-    if (isWeekend) {
-
-        // Робочі години для вихідних: 10:00 - 16:00
-        if (hour < form.weekendStart || hour >= form.weekendEnd) {
-            args.cell.properties.backColor = notEnableCells; // Сірий колір для неробочих
-            nonWorkingCells.value.push(args.cell.start);
-        }
     } else {
-        if (hour < form.weekdayStart || hour >= form.weekdayEnd) {
-            args.cell.properties.backColor = notEnableCells;
-            nonWorkingCells.value.push(args.cell.start);
+        args.cell.properties.backColor = "#d1e3ff";
+        // make nonWorkingCells
+        const dayOfWeek = args.cell.start.getDayOfWeek(); // 0 - Нд, 1 - Пн... 6 - Сб
+        const date = new DayPilot.Date(args.cell.start.value);
+        const hour = date.toString("HH:mm");
+
+        const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
+        if (isWeekend) {
+            if (hour < form.weekendStart || hour >= form.weekendEnd) { // неробочий час
+                args.cell.properties.backColor = colorNotEnabledCells;
+                nonWorkingCells.value.push(args.cell.start.value);
+            } else {
+                enabledCells.value.push(args.cell.start.value);
+            }
+        } else {
+            if (hour < form.weekdayStart || hour >= form.weekdayEnd) { // неробочий час
+                args.cell.properties.backColor = colorNotEnabledCells;
+                nonWorkingCells.value.push(args.cell.start.value);
+            }else {
+                enabledCells.value.push(args.cell.start.value)
+            }
         }
     }
+    nonWorkingCells.value.forEach((e) => {
+        if (args.cell.start.value === e) {
+            const cellId = "cell-" + args.cell.start.getTime();
+            args.cell.properties.html =   `
+                <style>
+                  #${cellId} .badge {
+                    display: block;
+                    position: absolute;
+                    top: 0px;
+                    right: 6px;
+                    color: #ababab;
+                    padding: 0px 5px;
+                    font-size: 18px;
+                    font-weight: bold;
+                    z-index: 10;
+                  }
+                  .scheduler_default_cell:hover #${cellId} .badge,
+                  .calendar_default_cell:hover #${cellId} .badge {
+                    display: block;
+                    color: #161414;
+                  }
+                </style>
+                <div id="${cellId}" class="parent_badge"  style="width: 100%; height: 100%; position: relative;">
+                  <div class="badge" data-info="icon-plus" >+</div>
+                </div>
+              `;
+            }
+        })
+    enabledCells.value.forEach((e) => {
+        if (args.cell.start.value === e) {
+            const cellId = "cell-" + args.cell.start.getTime();
+            args.cell.properties.html =   `
+                <style>
+                  #${cellId} .badge {
+                    display: block;
+                    position: absolute;
+                    top: 0px;
+                    right: 6px;
+                    color: #ababab;
+                    padding: 0px 5px;
+                    font-size: 18px;
+                    font-weight: bold;
+                    z-index: 10;
+                  }
+                  .scheduler_default_cell:hover #${cellId} .badge,
+                  .calendar_default_cell:hover #${cellId} .badge {
+                    display: block;
+                    color: #161414;
+                  }
+                </style>
+                <div id="${cellId}" class="parent_badge" style="width: 100%; height: 100%; position: relative;">
+                <div class="badge" data-info="icon-plus">x</div>
+                </div>
+              `;
+        }
+    })
 }
 
 const onTimeRangeSelected = async (args) => {
-    const modal = await DayPilot.Modal.prompt("Create a new event:", "Event 1");
     const calendar = args.control;
+    if (lastClickedBadge === 'icon-plus') {
+        alert("Ви натиснули на ПЛЮС!");
+        calendar.clearSelection();
+        return; // Перериваємо виконання, щоб не спрацювала логіка кліку по клітинці
+    }
+
+    const modal = await DayPilot.Modal.prompt("Create a new event:", "Event 1");
+
     calendar.clearSelection();
     if (modal.canceled) { return; }
     calendar.events.add({
@@ -106,7 +176,7 @@ const loadEvents = () => {
 };
 
 const getHours = () => {
-    router.get('/hours',{}, {
+    router.get('/dashboard',{}, {
         preserveState: true, // без цього не обновляє дані
         onSuccess: (page) => {
             form.weekdayStart = page.props.hours?.[0]?.weekday_start;
@@ -118,7 +188,7 @@ const getHours = () => {
 }
 
 const saveHours = () => {
-    form.post(route('hours.store'), {
+    form.post(route('dashboard.store'), {
         preserveScroll: true,
         onSuccess: () => console.log('Save successful'),
         onError: (errors) => console.log('Save failed', errors),
@@ -128,8 +198,17 @@ const saveHours = () => {
 onMounted(() => {
     loadEvents();
     getHours();
+    const calendarElement = document.querySelector(".parent_badge");
+    if (calendarElement) {
+        document.addEventListener("pointerdown", function(e) {
+            if (e.target && e.target.classList.contains('badge')) {
+                lastClickedBadge = e.target.getAttribute('data-info');
+            } else {
+                lastClickedBadge = null;
+            }
+        }, true);
+    }
 });
-
 </script>
 
 <template>
