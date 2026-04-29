@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Admin\EventCellsController;
+use App\Http\Controllers\Admin\EventsController;
 use App\Http\Controllers\Admin\HoursController;
 use App\Http\Controllers\ProfileController;
 use Illuminate\Foundation\Application;
@@ -20,6 +22,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/dashboard', 'index')->name('dashboard');
         Route::post('/dashboard', 'store')->name('dashboard.store');
     });
+    Route::controller(EventsController::class)->group(function () {
+        Route::post('/events', 'store')->name('events.store');
+    });
+    Route::controller(EventCellsController::class)->group(function () {
+        Route::post('/event-cells', 'bulkStore')->name('eventcells.bulkStore');
+    });
+
 });
 
 Route::middleware('auth')->group(function () {
