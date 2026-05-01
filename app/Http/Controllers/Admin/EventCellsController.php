@@ -8,6 +8,14 @@ use Illuminate\Http\Request;
 
 class EventCellsController extends Controller
 {
+    public function getAll()
+    {
+        $eventCells = EventCells::all();
+        return response()->json([
+            'eventCells' => $eventCells
+        ]);
+    }
+
     public function bulkStore(Request $request)
     {
         $validated = $request->validate([

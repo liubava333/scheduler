@@ -18,8 +18,8 @@ class Events extends Model
     ];
 
     protected $casts = [
-        'start' => 'datetime',
-        'end' => 'datetime',
+        'start' => 'datetime:Y-m-d\TH:i:s',
+        'end' => 'datetime:Y-m-d\TH:i:s',
     ];
 
     protected static function boot()

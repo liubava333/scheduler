@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Models\Admin\Events;
 use Illuminate\Http\Request;
 use App\Models\Admin\Hour;
 use App\Http\Controllers\Controller;
@@ -12,7 +13,8 @@ class HoursController extends Controller
     public function index()
     {
         return Inertia::render('Dashboard', [
-            'hours' => Hour::all()
+            'hours' => Hour::all(),
+            'events' => Events::all()
         ]);
     }
 

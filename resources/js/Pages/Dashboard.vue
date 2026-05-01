@@ -4,8 +4,11 @@ import { useForm, usePage, router } from '@inertiajs/vue3';
 import {DayPilot, DayPilotCalendar, DayPilotMonth, DayPilotNavigator} from '@daypilot/daypilot-lite-vue';
 import {ref, onMounted} from 'vue';
 import CalendarEvent from "@/Components/CalendarEvent.vue";
+import axios from 'axios';
+import ModalAddEvent from './ModalAddEvent.vue';
 
 const events = ref([]);
+const eventCells = ref([]);
 const viewType = ref("Week");
 const startDate = ref(DayPilot.Date.today());
 const dayRef = ref(null);
@@ -16,6 +19,21 @@ const pastCells = ref([]);
 const nonWorkingCells = ref([]);
 const enabledCells = ref([]);
 let lastClickedBadge = null;
+const eventModalRef = ref(null);
+interface CalendarEvent {
+    id: number | string;
+    name: string;
+    start: string;
+    end: string;
+    color?: string;
+    note: string;
+}
+// 1. Типизируем пропсы (если данные приходят при загрузке)
+const props = defineProps<{
+    events: CalendarEvent[]
+}>();
+const modalData = ref({});
+const isModalOpen = ref(false);
 const page = usePage();
 const hours = page.props.hours; // Proxy об'єкт Inertia render
 const form = useForm('post', route('dashboard.store'),{
@@ -110,8 +128,16 @@ const onBeforeCellRender = async (args) => {
               `;
         }
     })
-}
 
+    if (eventCells.value && eventCells.value.length > 0) {
+        eventCells.value.forEach((e) => {
+            if (args.cell.start.value === e.start) {
+                args.cell.properties.html = '';
+                args.cell.properties.backColor = colorNotEnabledCells;
+            }
+        });
+    }
+}
 const onTimeRangeSelected = async (args) => {
     const calendar = args.control;
     if (lastClickedBadge === 'icon-plus') {
@@ -121,98 +147,14 @@ const onTimeRangeSelected = async (args) => {
     }
     calendar.clearSelection();
 
-    const colorDropdownHtml = `
-        <div class="custom-dropdown" style="position: relative; ">
-            <div class="dropdown-selected" id="selectedItem">
-                <span class="color-box" style="background-color: #ccc; width:30px; height:20px; display:inline-block; margin-right:5px;"></span>
-                Виберіть колір
-            </div>
-            <div class="dropdown-options" id="options" style="display:none; position:absolute;max-height: 200px;overflow-y:auto; box-sizing:border-box; background:white; border:1px solid #ccc; z-index:1000;">
-                <div class="dropdown-option" data-value="#FF0000" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: red; width:30px; height:20px; display:inline-block;"></span> Червоний</div>
-                <div class="dropdown-option" data-value="#CD5C5C" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: indianRed; width:30px; height:20px; display:inline-block;"></span> Індійський червоний</div>
-                <div class="dropdown-option" data-value="#FF7F50" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: coral; width:30px; height:20px; display:inline-block;"></span> Кораловий</div>
-                <div class="dropdown-option" data-value="#FFA500" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: orange; width:30px; height:20px; display:inline-block;"></span> Помаранчевий</div>
-                <div class="dropdown-option" data-value="#F0E68C" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: khaki; width:30px; height:20px; display:inline-block;"></span> Хакі</div>
-                <div class="dropdown-option" data-value="#FFFF00" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: yellow; width:30px; height:20px; display:inline-block;"></span> Жовтий</div>
-                <div class="dropdown-option" data-value="#9ACD32" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: yellowGreen; width:30px; height:20px; display:inline-block;"></span> Жовто-зелений</div>
-                <div class="dropdown-option" data-value="#00FF00" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: lime; width:30px; height:20px; display:inline-block;"></span> Лайм</div>
-                <div class="dropdown-option" data-value="#008000" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: green; width:30px; height:20px; display:inline-block;"></span> Зелений</div>
-                <div class="dropdown-option" data-value="#808000" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: olive; width:30px; height:20px; display:inline-block;"></span> Оливковий</div>
-                <div class="dropdown-option" data-value="#3CB371" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: seaGreen; width:30px; height:20px; display:inline-block;"></span> Морський зелений</div>
-                <div class="dropdown-option" data-value="#008080" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: teal; width:30px; height:20px; display:inline-block;"></span> Зеленувато-блакитний</div>
-                <div class="dropdown-option" data-value="#0000FF" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: blue; width:30px; height:20px; display:inline-block;"></span> Синій</div>
-                <div class="dropdown-option" data-value="#7FFFD4" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: aquamarine; width:30px; height:20px; display:inline-block;"></span> Аквамарин</div>
-                <div class="dropdown-option" data-value="#800080" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: purple; width:30px; height:20px; display:inline-block;"></span> Фіолетовий</div>
-                <div class="dropdown-option" data-value="#FF00FF" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: fuchsia; width:30px; height:20px; display:inline-block;"></span> Фуксія</div>
-                <div class="dropdown-option" data-value="#FF1493" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: deepPink; width:30px; height:20px; display:inline-block;"></span> Рожевий</div>
-                <div class="dropdown-option" data-value="#FF69B4" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: hotPink; width:30px; height:20px; display:inline-block;"></span> Гарячий рожевий</div>
-                <div class="dropdown-option" data-value="#FFFFFF" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: white; width:30px; height:20px; display:inline-block;"></span> Білий</div>
-                <div class="dropdown-option" data-value="#808080" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: gray; width:30px; height:20px; display:inline-block;"></span> Сірий</div>
-            </div>
-        </div>`;
-
-    const form = [
-        { name: "Name", id: "name", type: "text" },
-        { name: "Phone", id: "phone", type: "text" },
-        { name: "Date", id: "date", type: "date", disabled: true },
-        { name: "Start", id: "start", type: "time", timeInterval: 30 },
-        { name: "End", id: "end", type: "time", timeInterval: 30 },
-        { name: "Note", id: "note", type: "textarea", height: 50 },
-        { name: "Color", id: "colorCustom", html: colorDropdownHtml }
-    ];
-
-    const data = {
-        date: "2026-04-28",
+    modalData.value = {
+        date: args.start.value,
         start: args.start.toString("HH:mm"),
         end: args.start.addMinutes(30).toString("HH:mm"),
         colorCustom: ""
     };
-
-    DayPilot.Modal.form(form, data).then(function(modal) {
-        if (modal.canceled) return;
-        const date = new DayPilot.Date(modal.result.date).toString("yyyy-MM-dd");
-        const startDateTime = date + "T" + modal.result.start;
-        const endDateTime = date + "T" + modal.result.end;
-
-        const params = {
-            name: modal.result.name,
-            phone: modal.result.phone,
-            start: startDateTime,
-            end: endDateTime,
-            id: DayPilot.guid(),
-            note: modal.result.note,
-            color: modal.result.colorCustom,
-        }
-        router.post(route('events.store'), params, {
-            preserveState: true,
-            onSuccess: (res) => {
-                const eventId = res.props.flash.eventId;
-                const cells = defineEventCells(startDateTime, endDateTime);
-                router.post(route('eventcells.bulkStore'),  {event_id: eventId, cells: cells}, {
-                    preserveState: true,
-                    onSuccess: () => {
-                        console.log('Event cells Added');
-                    }
-                });
-                // Optional: Update DayPilot event with actual server data
-                calendar.clearSelection();
-            }
-        });
-    });
-    document.addEventListener('click', function(e) {
-        const selectedItem = document.getElementById('selectedItem');
-        const options = document.getElementById('options');
-
-        if (e.target.closest('#selectedItem')) {
-            options.style.display = options.style.display === 'none' ? 'block' : 'none';
-        } else if (e.target.closest('.dropdown-option')) {
-            const value = e.target.closest('.dropdown-option').getAttribute('data-value');
-            selectedItem.innerHTML = e.target.closest('.dropdown-option').innerHTML;
-            options.style.display = 'none';
-            data.colorCustom = value;
-        } else {
-            if(options) options.style.display = 'none';
-        }
+    eventModalRef.value.open({
+        modalData
     });
 };
 
@@ -268,14 +210,17 @@ const onEventDelete = (event) => {
 }
 
 const loadEvents = () => {
-    const firstDay = DayPilot.Date.today().firstDayOfWeek().addDays(1);
-    events.value = [
-        { id: 1, start: firstDay.addHours(9), end: firstDay.addHours(10), text: "Event 1", color: "#93c47d"},
-        { id: 2, start: firstDay.addDays(1).addHours(11), end: firstDay.addDays(1).addHours(12), text: "Event 2", color: "#cccccc"},
-        { id: 3, start: firstDay.addDays(1).addHours(13), end: firstDay.addDays(1).addHours(15), text: "Event 3", color: "#6fa8dc"},
-        { id: 4, start: firstDay.addHours(15), end: firstDay.addHours(16), text: "Event 4", color: "#f6b26b"},
-        { id: 5, start: firstDay.addHours(11), end: firstDay.addHours(14), text: "Event 5", color: "#ffd966"},
-    ];
+    const newEvents = page.props.events as CalendarEvent[];
+    events.value = [...newEvents];
+};
+const loadEventCells = async () => {
+    try {
+        const response = await axios.get(route('eventcells.getAll'));
+        eventCells.value = response.data.eventCells;
+        weekRef.value.control.update();
+    } catch (error) {
+        console.error('Ошибка при загрузке событий:', error);
+    }
 };
 
 const getHours = () => {
@@ -293,11 +238,25 @@ const getHours = () => {
 const saveHours = () => {
     form.post(route('dashboard.store'), {
         preserveScroll: true,
-        onSuccess: () => console.log('Save successful'),
-        onError: (errors) => console.log('Save failed', errors),
+        onSuccess: () =>  {
+            weekRef.value.control.update();
+        },
+        onError: (errors) => {
+             console.log('Save failed', errors)
+        }
     });
 };
-
+const handleSaveEvent = (formData, eventId) => {
+    const cells = defineEventCells(formData.start, formData.end);
+    router.post(route('eventcells.bulkStore'),  {event_id: eventId, cells: cells}, {
+        preserveState: true,
+        onSuccess: () => {
+            console.log('Event cells Added');
+            loadEvents();
+            weekRef.value.control.update();
+        }
+    });
+}
 const addEventListenerClickOnIcon = () => {
     const calendarElement = document.querySelector(".parent_badge");
     if (calendarElement) {
@@ -311,8 +270,9 @@ const addEventListenerClickOnIcon = () => {
     }
 }
 onMounted(() => {
-    loadEvents();
     getHours();
+    loadEventCells();
+    loadEvents();
     addEventListenerClickOnIcon();
 });
 </script>
@@ -388,9 +348,11 @@ onMounted(() => {
                                     @beforeCellRender="onBeforeCellRender"
                                     ref="weekRef"
                                 >
-                                    <template #event="{event}">
+                                    <template #event="{data, event}">
                                         <CalendarEvent
                                             :event="event"
+                                            :name="event.data.name"
+                                            :note="event.data.note"
                                             @edit="onEventEdit"
                                             @delete="onEventDelete"
                                         />
@@ -413,6 +375,13 @@ onMounted(() => {
                                         />
                                     </template>
                                 </DayPilotMonth>
+                                <ModalAddEvent
+                                    :show="isModalOpen"
+                                    :initialData="modalData"
+                                    @close="isModalOpen = false"
+                                    ref="eventModalRef"
+                                    @save="handleSaveEvent"
+                                />
                             </div>
                         </div>
                     </div>

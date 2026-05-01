@@ -8,6 +8,14 @@ use App\Http\Controllers\Controller;
 
 class EventsController extends Controller
 {
+    public function getAll()
+    {
+        $events = Events::all();
+        return response()->json([
+            'events' => $events
+        ]);
+    }
+
     public function store(Request $request)
     {
         $validated = $request->validate([
