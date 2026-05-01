@@ -14,35 +14,46 @@ const open = async (data) => {
 // Используем данные, переданные в функцию, или props
     const modalData = data?.modalData?.value || props.initialData;
     initCustomDropdown(modalData);
+    const COLORS = [
+        { id: "#FF0000", name: "Червоний", color: "red" },
+        { id: "#008000", name: "Зелений", color: "green" },
+        { id: "#FF69B4", name: "Світло рожевий", color: "hotPink" },
+        { id: "#0000FF", name: "Синій", color: "blue" },
+        { id: "#9acd32", name: "Жовто-зелений", color: "yellowGreen" },
+        { id: "#3CB371", name: "Оливковий", color: "olive" },
+        { id: "#CD5C5C", name: "Індійський червоний", color: "indianRed" },
+        { id: "#367588", name: "Зеленувато-блакитний", color: "teal" },
+        { id: "#ccff00", name: "Лайм", color: "lime" },
+        { id: "#FF7F50", name: "Кораловий", color: "coral" },
+        { id: "#800080", name: "Фіолетовий", color: "purple" },
+        { id: "#FFA500", name: "Помаранчевий", color: "orange" },
+        { id: "#F0E68C", name: "Хакі", color: "khaki" },
+        { id: "#20B2AA", name: "Морський зелений", color: "seaGreen" },
+        { id: "#FFFF00", name: "Жовтий", color: "yellow" },
+        { id: "#7FFFD4", name: "Аквамарин", color: "aquamarine" },
+        { id: "#FF00FF", name: "Фуксія", color: "fuchsia" },
+        { id: "#FF1493", name: "Рожевий", color: "deepPink" },
+        { id: "#808080", name: "Сірий", color: "gray" },
+    ];
+
+// Генерируем HTML для выпадающего списка один раз
+    const colorOptionsHtml = COLORS.map(c => `
+    <div class="dropdown-option" data-value="${c.id}" style="padding:5px; cursor:pointer; display:flex; align-items:center;">
+        <span style="background-color:${c.color}; width:30px; height:20px; display:inline-block; margin-right:10px;"></span>
+        ${c.name}
+    </div>
+`).join('');
+
     const colorDropdownHtml = `
-        <div class="custom-dropdown" style="position: relative; ">
-            <div class="dropdown-selected" id="selectedItem">
-                <span class="color-box" style="background-color: #ccc; width:30px; height:20px; display:inline-block; margin-right:5px;"></span>
-                Виберіть колір
-            </div>
-            <div class="dropdown-options" id="options" style="display:none; position:absolute;max-height: 200px;overflow-y:auto; box-sizing:border-box; background:white; border:1px solid #ccc; z-index:1000;">
-                <div class="dropdown-option" data-value="#FF0000" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: red; width:30px; height:20px; display:inline-block;"></span> Червоний</div>
-                <div class="dropdown-option" data-value="#CD5C5C" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: indianRed; width:30px; height:20px; display:inline-block;"></span> Індійський червоний</div>
-                <div class="dropdown-option" data-value="#FF7F50" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: coral; width:30px; height:20px; display:inline-block;"></span> Кораловий</div>
-                <div class="dropdown-option" data-value="#FFA500" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: orange; width:30px; height:20px; display:inline-block;"></span> Помаранчевий</div>
-                <div class="dropdown-option" data-value="#F0E68C" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: khaki; width:30px; height:20px; display:inline-block;"></span> Хакі</div>
-                <div class="dropdown-option" data-value="#FFFF00" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: yellow; width:30px; height:20px; display:inline-block;"></span> Жовтий</div>
-                <div class="dropdown-option" data-value="#9ACD32" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: yellowGreen; width:30px; height:20px; display:inline-block;"></span> Жовто-зелений</div>
-                <div class="dropdown-option" data-value="#00FF00" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: lime; width:30px; height:20px; display:inline-block;"></span> Лайм</div>
-                <div class="dropdown-option" data-value="#008000" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: green; width:30px; height:20px; display:inline-block;"></span> Зелений</div>
-                <div class="dropdown-option" data-value="#808000" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: olive; width:30px; height:20px; display:inline-block;"></span> Оливковий</div>
-                <div class="dropdown-option" data-value="#3CB371" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: seaGreen; width:30px; height:20px; display:inline-block;"></span> Морський зелений</div>
-                <div class="dropdown-option" data-value="#008080" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: teal; width:30px; height:20px; display:inline-block;"></span> Зеленувато-блакитний</div>
-                <div class="dropdown-option" data-value="#0000FF" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: blue; width:30px; height:20px; display:inline-block;"></span> Синій</div>
-                <div class="dropdown-option" data-value="#7FFFD4" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: aquamarine; width:30px; height:20px; display:inline-block;"></span> Аквамарин</div>
-                <div class="dropdown-option" data-value="#800080" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: purple; width:30px; height:20px; display:inline-block;"></span> Фіолетовий</div>
-                <div class="dropdown-option" data-value="#FF00FF" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: fuchsia; width:30px; height:20px; display:inline-block;"></span> Фуксія</div>
-                <div class="dropdown-option" data-value="#FF1493" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: deepPink; width:30px; height:20px; display:inline-block;"></span> Рожевий</div>
-                <div class="dropdown-option" data-value="#FF69B4" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: hotPink; width:30px; height:20px; display:inline-block;"></span> Гарячий рожевий</div>
-                <div class="dropdown-option" data-value="#FFFFFF" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: white; width:30px; height:20px; display:inline-block;"></span> Білий</div>
-                <div class="dropdown-option" data-value="#808080" style="padding:5px; cursor:pointer;"><span class="color-box" style="background-color: gray; width:30px; height:20px; display:inline-block;"></span> Сірий</div>
-            </div>
-        </div>`;
+    <div class="custom-dropdown" style="position: relative;">
+        <div id="selectedItem" style="border:1px solid #ccc; padding:5px; cursor:pointer; display:flex; align-items:center;">
+            <span id="selectedColorBox" style="background-color:#ccc; width:30px; height:20px; display:inline-block; margin-right:10px;"></span>
+            <span id="selectedText">Виберіть колір</span>
+        </div>
+        <div id="options" style="display:none; position:absolute; width:100%; max-height:200px; overflow-y:auto; background:white; border:1px solid #ccc; z-index:1000;">
+            ${colorOptionsHtml}
+        </div>
+    </div>`;
     const formModal = [
         { name: "Name", id: "name", type: "text" },
         { name: "Phone", id: "phone", type: "text" },
