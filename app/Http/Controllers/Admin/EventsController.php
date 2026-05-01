@@ -35,4 +35,23 @@ class EventsController extends Controller
             'eventId' => $res->id
         ]);
     }
+
+    public function update(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'id' => 'required|string',
+            'name' => 'required|string|max:255',
+            'phone' => 'nullable|string',
+            'start' => 'required|date',
+            'end' => 'required|date|after:start',
+            'note' => 'nullable|string',
+            'color' => 'nullable|string',
+        ]);
+        $event = Events::findOrFail($id);
+        $event->update($validated);
+
+        return redirect()->back()->with([
+            'success' => 'Подія успішно обновлена!',
+        ]);
+    }
 }

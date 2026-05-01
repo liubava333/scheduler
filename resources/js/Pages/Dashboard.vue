@@ -6,6 +6,7 @@ import {ref, onMounted} from 'vue';
 import CalendarEvent from "@/Components/CalendarEvent.vue";
 import axios from 'axios';
 import ModalAddEvent from './ModalAddEvent.vue';
+import ModalEditEvent from './ModalEditEvent.vue';
 
 const events = ref([]);
 const eventCells = ref([]);
@@ -20,6 +21,7 @@ const nonWorkingCells = ref([]);
 const enabledCells = ref([]);
 let lastClickedBadge = null;
 const eventModalRef = ref(null);
+const eventModalEditRef = ref(null);
 interface CalendarEvent {
     id: number | string;
     name: string;
@@ -33,6 +35,7 @@ const props = defineProps<{
     events: CalendarEvent[]
 }>();
 const modalData = ref({});
+const modalEditData = ref({});
 const isModalOpen = ref(false);
 const page = usePage();
 const hours = page.props.hours; // Proxy об'єкт Inertia render
@@ -191,17 +194,25 @@ const onBeforeEventRender = (args) => {
     args.data.borderColor = "darker";
 };
 
-const onEventEdit = async  (event) => {
-    const form = [
-        {name: "Text", id: "text", type: "text"},
-        {name: "Color", id: "color", type: "select", options: colors},
-    ];
-    const modal = await DayPilot.Modal.form(form, event.data);
-    if (modal.canceled) {
-        return;
-    }
-    event.data.text = modal.result.text;
-    event.data.color = modal.result.color;
+const formatDate = (date) => {
+    const startDate = new DayPilot.Date(date);
+    return startDate.toString("yyyy/MM/dd");
+}
+
+const onEventEdit = async (event) => {
+    modalEditData.value = {
+        id: event.data.id,
+        name: event.data.name,
+        phone: event.data.phone,
+        date: formatDate(event.data.start),
+        start: new DayPilot.Date(event.data.start).toString("HH:mm"),
+        end: new DayPilot.Date(event.data.end).toString("HH:mm"),
+        note: event.data.note,
+        colorCustom: event.data.color
+    };
+    eventModalEditRef.value.open({
+        modalEditData
+    });
 };
 
 const onEventDelete = (event) => {
@@ -253,7 +264,19 @@ const handleSaveEvent = (formData, eventId) => {
         onSuccess: () => {
             console.log('Event cells Added');
             loadEvents();
-            weekRef.value.control.update();
+            loadEventCells();
+            // weekRef.value.control.update();
+        }
+    });
+}
+
+const handleEditEvent = (oldFormData, formData, eventId) => {
+    const cells = defineEventCells(formData.start, formData.end);
+    router.post(route('eventcells.bulkStore'),  {event_id: eventId, cells: cells}, {
+        preserveState: true,
+        onSuccess: () => {
+            loadEvents();
+            loadEventCells();
         }
     });
 }
@@ -381,6 +404,13 @@ onMounted(() => {
                                     @close="isModalOpen = false"
                                     ref="eventModalRef"
                                     @save="handleSaveEvent"
+                                />
+                                <ModalEditEvent
+                                    :show="isModalOpen"
+                                    :initialData="modalEditData"
+                                    @close="isModalOpen = false"
+                                    ref="eventModalEditRef"
+                                    @update="handleEditEvent"
                                 />
                             </div>
                         </div>

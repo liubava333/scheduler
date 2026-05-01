@@ -25,10 +25,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::controller(EventsController::class)->group(function () {
         Route::get('/events', 'getAll')->name('events.getAll');
         Route::post('/events', 'store')->name('events.store');
+        Route::patch('/events/{event}', 'update')->name('events.update');
     });
     Route::controller(EventCellsController::class)->group(function () {
         Route::get('/event-cells', 'getAll')->name('eventcells.getAll');
         Route::post('/event-cells', 'bulkStore')->name('eventcells.bulkStore');
+        Route::delete('/event-cells/{eventId}', 'destroy')->name('eventcells.destroy');
     });
 
 });

@@ -38,4 +38,19 @@ class EventCellsController extends Controller
 
         return redirect()->back();
     }
+
+    public function destroy($eventId)
+    {
+        try {
+            EventCells::where('event_id', $eventId)->delete();
+
+            return redirect()->back()->with([
+                'success' => 'Подія успішно видалена!',
+            ]);
+        } catch (\Exception $e) {
+            return redirect()->back()->with([
+                'error' => 'Подія не видалена!',
+            ]);
+        }
+    }
 }
