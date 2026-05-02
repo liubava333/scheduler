@@ -194,6 +194,51 @@ const onBeforeEventRender = (args) => {
     args.data.borderColor = "darker";
 };
 
+const onEventResized = (args) => {
+    // have to DO
+}
+
+const onEventMove = (args) => {
+    if (args.newStart < new DayPilot.Date()) {
+        args.preventDefault();
+        DayPilot.Modal.alert("Cannot move to the past.");
+        return;
+    }
+}
+
+const onEventMoved = (args) => {
+    const params = {
+        name: args.e.data.name,
+        phone: args.e.data.phone,
+        start: args.newStart.value,
+        end: args.newEnd.value,
+        id: args.e.data.id,
+        note: args.e.data.note,
+        color: args.e.data.colorCustom,
+    };
+
+    const syncCells = (eventId, start, end) => {
+        const cells = defineEventCells(start, end);
+
+        router.delete(route('eventcells.destroy', { eventId }), {
+            onSuccess: () => {
+                router.post(route('eventcells.bulkStore'), { event_id: eventId, cells }, {
+                    onSuccess: () => {
+                        loadEventCells();
+                    }
+                });
+            }
+        });
+    };
+
+    router.patch(route('events.update', { id: args.e.data.id }), params, {
+        preserveState: true,
+        onSuccess: () => syncCells(args.e.data.id, args.newStart.value, args.newEnd.value)
+    });
+
+}
+
+
 const formatDate = (date) => {
     const startDate = new DayPilot.Date(date);
     return startDate.toString("yyyy/MM/dd");
@@ -215,9 +260,19 @@ const onEventEdit = async (event) => {
     });
 };
 
-const onEventDelete = (event) => {
-    const data = event.data;
-    events.value = events.value.filter(e => e.id !== data.id);
+const onEventDelete = async (event) => {
+    const modal = await DayPilot.Modal.confirm("Видалити цю подію?");
+
+    if (modal.result === "OK") {
+        //  Удаляем из БД через Inertia
+        router.delete(route('events.destroy',{id : event.data.id}), {
+            onSuccess: () => {
+                loadEvents();
+                loadEventCells();
+                console.log("Event deleted");
+            }
+        });
+    }
 }
 
 const loadEvents = () => {
@@ -369,6 +424,9 @@ onMounted(() => {
                                     @beforeEventRender="onBeforeEventRender"
                                     @timeRangeSelected="onTimeRangeSelected"
                                     @beforeCellRender="onBeforeCellRender"
+                                    @eventResized="onEventResized"
+                                    @eventMove="onEventMove"
+                                    @eventMoved="onEventMoved"
                                     ref="weekRef"
                                 >
                                     <template #event="{data, event}">

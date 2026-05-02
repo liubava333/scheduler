@@ -26,6 +26,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/events', 'getAll')->name('events.getAll');
         Route::post('/events', 'store')->name('events.store');
         Route::patch('/events/{event}', 'update')->name('events.update');
+        Route::delete('/events/{id}', 'destroy')->name('events.destroy');
     });
     Route::controller(EventCellsController::class)->group(function () {
         Route::get('/event-cells', 'getAll')->name('eventcells.getAll');

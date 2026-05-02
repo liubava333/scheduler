@@ -54,4 +54,19 @@ class EventsController extends Controller
             'success' => 'Подія успішно обновлена!',
         ]);
     }
+
+    public function destroy($id)
+    {
+        try {
+            Events::where('id', $id)->delete();
+
+            return redirect()->back()->with([
+                'success' => 'Подія успішно видалена!',
+            ]);
+        } catch (\Exception $e) {
+            return redirect()->back()->with([
+                'error' => 'Подія не видалена!',
+            ]);
+        }
+    }
 }

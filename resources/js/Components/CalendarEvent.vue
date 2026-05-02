@@ -60,7 +60,8 @@ const handleDelete = () => {
     color: #333333;
     align-items: center;
     width: 100%;
-    gap: 8px; /* Расстояние между текстом и иконками */
+    /* Убираем общий gap здесь, если хотим разное расстояние */
+    gap: 0;
 }
 
 .event-header svg {
@@ -68,9 +69,10 @@ const handleDelete = () => {
     height: 16px;
     cursor: pointer;
     color: #33333366;
-    fill: currentColor; /* Иконка будет того же цвета, что и текст */
+    fill: currentColor;
     transition: opacity 0.2s, transform 0.1s;
-    margin-left: auto; /* Прижимает иконки к правому краю, если нужно */
+    /* Это прижмет ПЕРВУЮ иконку вправо, отодвинув её от текста */
+    margin-left: auto;
 }
 
 .event-header svg:hover {
@@ -86,6 +88,6 @@ const handleDelete = () => {
 
 /* Если иконок несколько, добавим отступ между ними */
 .event-header svg + svg {
-    margin-left: 4px;
+    margin-left: 1px;
 }
 </style>

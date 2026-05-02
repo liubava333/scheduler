@@ -44,12 +44,10 @@ class EventCellsController extends Controller
         try {
             EventCells::where('event_id', $eventId)->delete();
 
-            return redirect()->back()->with([
-                'success' => 'Подія успішно видалена!',
-            ]);
+            return redirect()->back();
         } catch (\Exception $e) {
             return redirect()->back()->with([
-                'error' => 'Подія не видалена!',
+                'error' => $e,
             ]);
         }
     }
