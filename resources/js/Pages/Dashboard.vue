@@ -2,7 +2,7 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { useForm, usePage, router } from '@inertiajs/vue3';
 import {DayPilot, DayPilotCalendar, DayPilotMonth, DayPilotNavigator} from '@daypilot/daypilot-lite-vue';
-import {ref, onMounted} from 'vue';
+import {ref, onMounted, toRaw } from 'vue';
 import CalendarEvent from "@/Components/CalendarEvent.vue";
 import axios from 'axios';
 import ModalAddEvent from './ModalAddEvent.vue';
@@ -16,9 +16,11 @@ const dayRef = ref(null);
 const weekRef = ref(null);
 const monthRef = ref(null);
 const colorNotEnabledCells = "#f1efef";
+const colorEnabledCells = "#d1e3ff";
 const pastCells = ref([]);
 const nonWorkingCells = ref([]);
 const enabledCells = ref([]);
+const additionalCells = ref([]);
 let lastClickedBadge = null;
 const eventModalRef = ref(null);
 const eventModalEditRef = ref(null);
@@ -52,7 +54,7 @@ const onBeforeCellRender = async (args) => {
         args.cell.properties.backColor = colorNotEnabledCells;
         pastCells.value.push(args.cell.start);
     } else {
-        args.cell.properties.backColor = "#d1e3ff";
+        args.cell.properties.backColor = colorEnabledCells;
         // make nonWorkingCells
         const dayOfWeek = args.cell.start.getDayOfWeek(); // 0 - Нд, 1 - Пн... 6 - Сб
         const date = new DayPilot.Date(args.cell.start.value);
@@ -61,23 +63,30 @@ const onBeforeCellRender = async (args) => {
         const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
         if (isWeekend) {
             if (hour < form.weekendStart || hour >= form.weekendEnd) { // неробочий час
-                args.cell.properties.backColor = colorNotEnabledCells;
                 nonWorkingCells.value.push(args.cell.start.value);
             } else {
                 enabledCells.value.push(args.cell.start.value);
             }
         } else {
             if (hour < form.weekdayStart || hour >= form.weekdayEnd) { // неробочий час
-                args.cell.properties.backColor = colorNotEnabledCells;
                 nonWorkingCells.value.push(args.cell.start.value);
             }else {
                 enabledCells.value.push(args.cell.start.value)
             }
         }
     }
+
+    if (additionalCells.value && additionalCells.value.length > 0 ) {
+        let newCells = toRaw(additionalCells.value);
+            // Создаем новый массив из уникальных значений обоих массивов
+        enabledCells.value = [...new Set([...enabledCells.value, ...newCells])];
+        nonWorkingCells.value = nonWorkingCells.value.filter(item => !newCells.includes(item));
+    }
+
     nonWorkingCells.value.forEach((e) => {
         if (args.cell.start.value === e) {
             const cellId = "cell-" + args.cell.start.getTime();
+            args.cell.properties.backColor = colorNotEnabledCells;
             args.cell.properties.html =   `
                 <style>
                   #${cellId} .badge {
@@ -106,6 +115,7 @@ const onBeforeCellRender = async (args) => {
     enabledCells.value.forEach((e) => {
         if (args.cell.start.value === e) {
             const cellId = "cell-" + args.cell.start.getTime();
+            args.cell.properties.backColor = colorEnabledCells;
             args.cell.properties.html =   `
                 <style>
                   #${cellId} .badge {
@@ -141,10 +151,22 @@ const onBeforeCellRender = async (args) => {
         });
     }
 }
+
+const addAdditionalCells = (cell) => {
+    router.post(route('additional.store'), {cell: cell}, {
+        preserveState: true,
+        onSuccess: () => {
+            getAdditionalCells();
+        },
+        onError: (error) => {
+            console.log(error);
+        }
+    });
+}
 const onTimeRangeSelected = async (args) => {
     const calendar = args.control;
     if (lastClickedBadge === 'icon-plus') {
-        alert("Ви натиснули на ПЛЮС!");
+        addAdditionalCells(args.start.value);
         calendar.clearSelection();
         return; // Перериваємо виконання, щоб не спрацювала логіка кліку по клітинці
     }
@@ -194,10 +216,6 @@ const onBeforeEventRender = (args) => {
     args.data.borderColor = "darker";
 };
 
-const onEventResized = (args) => {
-    // have to DO
-}
-
 const onEventMove = (args) => {
     if (args.newStart < new DayPilot.Date()) {
         args.preventDefault();
@@ -237,7 +255,6 @@ const onEventMoved = (args) => {
     });
 
 }
-
 
 const formatDate = (date) => {
     const startDate = new DayPilot.Date(date);
@@ -289,6 +306,20 @@ const loadEventCells = async () => {
     }
 };
 
+const getAdditionalCells = async () => {
+    axios.get(route('additional.getAll'))
+        .then(response => {
+            if (response.data.additionalCells) {
+                const newCells = toRaw(response.data.additionalCells.flat());
+                additionalCells.value = [...new Set([...additionalCells.value, ...newCells])];
+                weekRef.value.control.update();
+                console.log('Успешно загружено!');
+            }
+        })
+        .catch(error => {
+            console.error('Ошибка загрузки:', error);
+        });
+}
 const getHours = () => {
     router.get('/dashboard',{}, {
         preserveState: true, // без цього не обновляє дані
@@ -352,6 +383,7 @@ onMounted(() => {
     loadEventCells();
     loadEvents();
     addEventListenerClickOnIcon();
+    getAdditionalCells();
 });
 </script>
 
@@ -424,7 +456,7 @@ onMounted(() => {
                                     @beforeEventRender="onBeforeEventRender"
                                     @timeRangeSelected="onTimeRangeSelected"
                                     @beforeCellRender="onBeforeCellRender"
-                                    @eventResized="onEventResized"
+                                    @eventResized="onEventMoved"
                                     @eventMove="onEventMove"
                                     @eventMoved="onEventMoved"
                                     ref="weekRef"

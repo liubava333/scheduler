@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\AdditionalCellsController;
 use App\Http\Controllers\Admin\EventCellsController;
 use App\Http\Controllers\Admin\EventsController;
 use App\Http\Controllers\Admin\HoursController;
@@ -33,7 +34,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/event-cells', 'bulkStore')->name('eventcells.bulkStore');
         Route::delete('/event-cells/{eventId}', 'destroy')->name('eventcells.destroy');
     });
-
+    Route::controller(AdditionalCellsController::class)->group(function () {
+        Route::get('/additional', 'getAll')->name('additional.getAll');
+        Route::post('/additional', 'store')->name('additional.store');
+    });
 });
 
 Route::middleware('auth')->group(function () {
