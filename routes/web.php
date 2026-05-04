@@ -37,6 +37,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::controller(AdditionalCellsController::class)->group(function () {
         Route::get('/additional', 'getAll')->name('additional.getAll');
         Route::post('/additional', 'store')->name('additional.store');
+        Route::delete('/additional/{val}', 'destroy')->name('additional.destroy');
     });
 });
 

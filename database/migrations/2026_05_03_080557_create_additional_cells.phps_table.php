@@ -14,6 +14,7 @@ return new class extends Migration
         Schema::create('additional_cells', function (Blueprint $table) {
             $table->id();
             $table->string('start');
+            $table->boolean('is_enabled')->default(true);
             $table->timestamps();
         });
     }

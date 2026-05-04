@@ -77,10 +77,17 @@ const onBeforeCellRender = async (args) => {
     }
 
     if (additionalCells.value && additionalCells.value.length > 0 ) {
-        let newCells = toRaw(additionalCells.value);
-            // Создаем новый массив из уникальных значений обоих массивов
-        enabledCells.value = [...new Set([...enabledCells.value, ...newCells])];
-        nonWorkingCells.value = nonWorkingCells.value.filter(item => !newCells.includes(item));
+        additionalCells.value.forEach((e) => {
+            const cellTime = e.start;
+
+            if (e.is_enabled === 0) {
+                nonWorkingCells.value = [...new Set([...nonWorkingCells.value, cellTime])];
+                enabledCells.value = enabledCells.value.filter(time => time !== cellTime);
+            } else {
+                enabledCells.value = [...new Set([...enabledCells.value, cellTime])];
+                nonWorkingCells.value = nonWorkingCells.value.filter(time => time !== cellTime);
+            }
+        });
     }
 
     nonWorkingCells.value.forEach((e) => {
@@ -136,7 +143,7 @@ const onBeforeCellRender = async (args) => {
                   }
                 </style>
                 <div id="${cellId}" class="parent_badge" style="width: 100%; height: 100%; position: relative;">
-                <div class="badge" data-info="icon-plus">x</div>
+                <div class="badge" data-info="icon-remove">x</div>
                 </div>
               `;
         }
@@ -152,23 +159,25 @@ const onBeforeCellRender = async (args) => {
     }
 }
 
-const addAdditionalCells = (cell) => {
-    router.post(route('additional.store'), {cell: cell}, {
-        preserveState: true,
-        onSuccess: () => {
-            getAdditionalCells();
-        },
-        onError: (error) => {
-            console.log(error);
+const addAdditionalCells = (cell, is_enabled) => {
+    router.post(route('additional.store'), { cell, is_enabled }, {
+        onSuccess: () =>  {
+            getAdditionalCells()
         }
     });
 }
+
 const onTimeRangeSelected = async (args) => {
     const calendar = args.control;
     if (lastClickedBadge === 'icon-plus') {
-        addAdditionalCells(args.start.value);
+        addAdditionalCells(args.start.value, true);
         calendar.clearSelection();
-        return; // Перериваємо виконання, щоб не спрацювала логіка кліку по клітинці
+        return;
+    }
+    if (lastClickedBadge === 'icon-remove') {
+        addAdditionalCells(args.start.value, false);
+        calendar.clearSelection();
+        return;
     }
     calendar.clearSelection();
 
@@ -309,11 +318,11 @@ const loadEventCells = async () => {
 const getAdditionalCells = async () => {
     axios.get(route('additional.getAll'))
         .then(response => {
-            if (response.data.additionalCells) {
+            if (response.data.additionalCells && response.data.additionalCells.length > 0) {
                 const newCells = toRaw(response.data.additionalCells.flat());
                 additionalCells.value = [...new Set([...additionalCells.value, ...newCells])];
                 weekRef.value.control.update();
-                console.log('Успешно загружено!');
+                console.log('Additional cells Успешно загружено!');
             }
         })
         .catch(error => {

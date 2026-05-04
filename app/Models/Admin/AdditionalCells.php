@@ -8,5 +8,6 @@ class AdditionalCells extends Model
 {
     protected $fillable = [
         'start',
+        'is_enabled'
     ];
 }
