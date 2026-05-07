@@ -5,8 +5,7 @@ import {DayPilot, DayPilotCalendar, DayPilotMonth, DayPilotNavigator} from '@day
 import {ref, onMounted, toRaw } from 'vue';
 import CalendarEvent from "@/Components/CalendarEvent.vue";
 import axios from 'axios';
-import ModalAddEvent from './ModalAddEvent.vue';
-import ModalEditEvent from './ModalEditEvent.vue';
+import EventFormModal from '@/Pages/EventFormModal.vue';
 
 const events = ref([]);
 const eventCells = ref([]);
@@ -17,13 +16,9 @@ const weekRef = ref(null);
 const monthRef = ref(null);
 const colorNotEnabledCells = "#f1efef";
 const colorEnabledCells = "#d1e3ff";
-const pastCells = ref([]);
-const nonWorkingCells = ref([]);
-const enabledCells = ref([]);
 const additionalCells = ref([]);
 let lastClickedBadge = null;
 const eventModalRef = ref(null);
-const eventModalEditRef = ref(null);
 interface CalendarEvent {
     id: number | string;
     name: string;
@@ -37,7 +32,6 @@ const props = defineProps<{
     events: CalendarEvent[]
 }>();
 const modalData = ref({});
-const modalEditData = ref({});
 const isModalOpen = ref(false);
 const page = usePage();
 const hours = page.props.hours; // Proxy об'єкт Inertia render
@@ -48,116 +42,60 @@ const form = useForm('post', route('dashboard.store'),{
     weekendEnd: hours?.[0]?.weekend_end || '',
 });
 
-const onBeforeCellRender = async (args) => {
-    // make pastCells
-    if (args.cell.start < DayPilot.Date.now()) {
+const onBeforeCellRender = (args) => {
+    const cellValue = args.cell.start.value;
+    const cellDate = args.cell.start;
+    const now = DayPilot.Date.now();
+    // 1. Обработка прошлого
+    if (cellDate < now) {
         args.cell.properties.backColor = colorNotEnabledCells;
-        pastCells.value.push(args.cell.start);
+        args.cell.properties.cursor = "not-allowed";
+        return; // Для прошлого иконки не нужны
+    }
+
+    // 2. Определяем базовый статус (рабочий/нерабочий) по графику
+    const dayOfWeek = cellDate.getDayOfWeek(); // 0-Нд, 6-Сб
+    const hour = cellDate.toString("HH:mm");
+    const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
+
+    // Получаем лимиты в зависимости от дня
+    const startLimit = isWeekend ? form.weekendStart : form.weekdayStart;
+    const endLimit = isWeekend ? form.weekendEnd : form.weekdayEnd;
+
+    // Базовая логика: рабочая ячейка или нет
+    let isWorking = (hour >= startLimit && hour < endLimit);
+
+    // 3. Накладываем исключения (Additional Cells) из базы
+    if (additionalCells.value) {
+        const override = additionalCells.value.find(e => {
+            const normalizedStart = e.start.replace(" ", "T");
+            return normalizedStart === cellValue;
+        });
+        if (override) {
+            isWorking = !!override.is_enabled;
+        }
+    }
+
+    // 4. Проверяем занятость (Event Cells)
+    const isOccupied = eventCells.value?.some(e => e.start === cellValue);
+
+    // 5. Финальный рендер
+    if (isOccupied) {
+        args.cell.properties.backColor = colorNotEnabledCells;
+        args.cell.properties.html = ''; // Убираем иконки, если там уже есть событие
     } else {
-        args.cell.properties.backColor = colorEnabledCells;
-        // make nonWorkingCells
-        const dayOfWeek = args.cell.start.getDayOfWeek(); // 0 - Нд, 1 - Пн... 6 - Сб
-        const date = new DayPilot.Date(args.cell.start.value);
-        const hour = date.toString("HH:mm");
+        args.cell.properties.backColor = isWorking ? colorEnabledCells : colorNotEnabledCells;
 
-        const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
-        if (isWeekend) {
-            if (hour < form.weekendStart || hour >= form.weekendEnd) { // неробочий час
-                nonWorkingCells.value.push(args.cell.start.value);
-            } else {
-                enabledCells.value.push(args.cell.start.value);
-            }
-        } else {
-            if (hour < form.weekdayStart || hour >= form.weekdayEnd) { // неробочий час
-                nonWorkingCells.value.push(args.cell.start.value);
-            }else {
-                enabledCells.value.push(args.cell.start.value)
-            }
-        }
+        const badgeIcon = isWorking ? "x" : "+";
+        const badgeType = isWorking ? "icon-remove" : "icon-plus";
+
+        args.cell.properties.html = `
+            <div class="cell-badge-container">
+                <div class="badge" data-info="${badgeType}">${badgeIcon}</div>
+            </div>
+        `;
     }
-
-    if (additionalCells.value && additionalCells.value.length > 0 ) {
-        additionalCells.value.forEach((e) => {
-            const cellTime = e.start;
-
-            if (e.is_enabled === 0) {
-                nonWorkingCells.value = [...new Set([...nonWorkingCells.value, cellTime])];
-                enabledCells.value = enabledCells.value.filter(time => time !== cellTime);
-            } else {
-                enabledCells.value = [...new Set([...enabledCells.value, cellTime])];
-                nonWorkingCells.value = nonWorkingCells.value.filter(time => time !== cellTime);
-            }
-        });
-    }
-
-    nonWorkingCells.value.forEach((e) => {
-        if (args.cell.start.value === e) {
-            const cellId = "cell-" + args.cell.start.getTime();
-            args.cell.properties.backColor = colorNotEnabledCells;
-            args.cell.properties.html =   `
-                <style>
-                  #${cellId} .badge {
-                    display: block;
-                    position: absolute;
-                    top: 0px;
-                    right: 6px;
-                    color: #ababab;
-                    padding: 0px 5px;
-                    font-size: 18px;
-                    font-weight: bold;
-                    z-index: 10;
-                  }
-                  .scheduler_default_cell:hover #${cellId} .badge,
-                  .calendar_default_cell:hover #${cellId} .badge {
-                    display: block;
-                    color: #161414;
-                  }
-                </style>
-                <div id="${cellId}" class="parent_badge"  style="width: 100%; height: 100%; position: relative;">
-                  <div class="badge" data-info="icon-plus" >+</div>
-                </div>
-              `;
-            }
-        })
-    enabledCells.value.forEach((e) => {
-        if (args.cell.start.value === e) {
-            const cellId = "cell-" + args.cell.start.getTime();
-            args.cell.properties.backColor = colorEnabledCells;
-            args.cell.properties.html =   `
-                <style>
-                  #${cellId} .badge {
-                    display: block;
-                    position: absolute;
-                    top: 0px;
-                    right: 6px;
-                    color: #ababab;
-                    padding: 0px 5px;
-                    font-size: 18px;
-                    font-weight: bold;
-                    z-index: 10;
-                  }
-                  .scheduler_default_cell:hover #${cellId} .badge,
-                  .calendar_default_cell:hover #${cellId} .badge {
-                    display: block;
-                    color: #161414;
-                  }
-                </style>
-                <div id="${cellId}" class="parent_badge" style="width: 100%; height: 100%; position: relative;">
-                <div class="badge" data-info="icon-remove">x</div>
-                </div>
-              `;
-        }
-    })
-
-    if (eventCells.value && eventCells.value.length > 0) {
-        eventCells.value.forEach((e) => {
-            if (args.cell.start.value === e.start) {
-                args.cell.properties.html = '';
-                args.cell.properties.backColor = colorNotEnabledCells;
-            }
-        });
-    }
-}
+};
 
 const addAdditionalCells = (cell, is_enabled) => {
     router.post(route('additional.store'), { cell, is_enabled }, {
@@ -169,6 +107,11 @@ const addAdditionalCells = (cell, is_enabled) => {
 
 const onTimeRangeSelected = async (args) => {
     const calendar = args.control;
+    const now = new DayPilot.Date(); // Текущая дата и время
+    if (args.start < now) {
+        calendar.clearSelection();
+        return;
+    }
     if (lastClickedBadge === 'icon-plus') {
         addAdditionalCells(args.start.value, true);
         calendar.clearSelection();
@@ -221,8 +164,17 @@ const defineEventCells = (startCell, endCell) => {
 const onBeforeEventRender = (args) => {
     args.data.barHidden = true;
     args.data.borderRadius = "5px";
-    args.data.backColor = (args.data.color || "#cccccc") + "cc";
-    args.data.borderColor = "darker";
+    const now = new DayPilot.Date();
+    const eventStart = new DayPilot.Date(args.data.start);
+
+    if (eventStart < now) {
+        args.data.backColor = "#eeeeee"; // Серый цвет для прошедших событий
+        args.data.fontColor = "#aaaaaa"; // Можно также приглушить цвет текста
+        args.data.borderColor = "#cccccc";
+    } else {
+        args.data.backColor = (args.data.color || "#cccccc") + "cc";
+        args.data.borderColor = "darker";
+    }
 };
 
 const onEventMove = (args) => {
@@ -271,7 +223,7 @@ const formatDate = (date) => {
 }
 
 const onEventEdit = async (event) => {
-    modalEditData.value = {
+    modalData.value = {
         id: event.data.id,
         name: event.data.name,
         phone: event.data.phone,
@@ -281,8 +233,8 @@ const onEventEdit = async (event) => {
         note: event.data.note,
         colorCustom: event.data.color
     };
-    eventModalEditRef.value.open({
-        modalEditData
+    eventModalRef.value.open({
+        modalData
     });
 };
 
@@ -319,9 +271,10 @@ const getAdditionalCells = async () => {
     axios.get(route('additional.getAll'))
         .then(response => {
             if (response.data.additionalCells && response.data.additionalCells.length > 0) {
-                const newCells = toRaw(response.data.additionalCells.flat());
-                additionalCells.value = [...new Set([...additionalCells.value, ...newCells])];
-                weekRef.value.control.update();
+                additionalCells.value = toRaw(response.data.additionalCells.flat());
+                if (weekRef.value?.control) {
+                    weekRef.value.control.update();
+                }
                 console.log('Additional cells Успешно загружено!');
             }
         })
@@ -360,7 +313,6 @@ const handleSaveEvent = (formData, eventId) => {
             console.log('Event cells Added');
             loadEvents();
             loadEventCells();
-            // weekRef.value.control.update();
         }
     });
 }
@@ -376,7 +328,7 @@ const handleEditEvent = (oldFormData, formData, eventId) => {
     });
 }
 const addEventListenerClickOnIcon = () => {
-    const calendarElement = document.querySelector(".parent_badge");
+    const calendarElement = document.querySelector(".cell-badge-container");
     if (calendarElement) {
         document.addEventListener("pointerdown", function(e) {
             if (e.target && e.target.classList.contains('badge')) {
@@ -434,10 +386,11 @@ onMounted(() => {
                             </div>
                             <div style="flex-grow: 1;">
                                 <div class="buttons">
-                                    <button @click="viewType='Day'" :class="{ selected: viewType === 'Day' }">Day</button>
-                                    <button @click="viewType='Week'" :class="{ selected: viewType === 'Week' }">Week</button>
-                                    <button @click="viewType='Month'" :class="{ selected: viewType === 'Month' }">Month</button>
+                                    <button @click="viewType='Day'" :class="{ selected: viewType === 'Day' }">День</button>
+                                    <button @click="viewType='Week'" :class="{ selected: viewType === 'Week' }">Тиждень</button>
+                                    <button @click="viewType='Month'" :class="{ selected: viewType === 'Month' }">Місяць</button>
                                 </div>
+
                                 <DayPilotCalendar
                                     :viewType="'Day'"
                                     :startDate="startDate"
@@ -445,11 +398,16 @@ onMounted(() => {
                                     :events="events"
                                     @beforeEventRender="onBeforeEventRender"
                                     @timeRangeSelected="onTimeRangeSelected"
+                                    @eventResized="onEventMoved"
+                                    @eventMove="onEventMove"
+                                    @eventMoved="onEventMoved"
                                     ref="dayRef"
                                 >
                                     <template #event="{event}">
                                         <CalendarEvent
                                             :event="event"
+                                            :name="event.data.name"
+                                            :note="event.data.note"
                                             @edit="onEventEdit"
                                             @delete="onEventDelete"
                                         />
@@ -486,30 +444,28 @@ onMounted(() => {
                                     :events="events"
                                     @beforeEventRender="onBeforeEventRender"
                                     @timeRangeSelected="onTimeRangeSelected"
+                                    @eventResized="onEventMoved"
+                                    @eventMove="onEventMove"
+                                    @eventMoved="onEventMoved"
                                     ref="monthRef"
                                 >
                                     <template #event="{event}">
                                         <CalendarEvent
                                             :event="event"
+                                            :name="event.data.name"
                                             :use-header="false"
                                             @edit="onEventEdit"
                                             @delete="onEventDelete"
                                         />
                                     </template>
                                 </DayPilotMonth>
-                                <ModalAddEvent
+                                <EventFormModal
                                     :show="isModalOpen"
                                     :initialData="modalData"
                                     @close="isModalOpen = false"
                                     ref="eventModalRef"
-                                    @save="handleSaveEvent"
-                                />
-                                <ModalEditEvent
-                                    :show="isModalOpen"
-                                    :initialData="modalEditData"
-                                    @close="isModalOpen = false"
-                                    ref="eventModalEditRef"
                                     @update="handleEditEvent"
+                                    @save="handleSaveEvent"
                                 />
                             </div>
                         </div>
@@ -520,24 +476,58 @@ onMounted(() => {
     </AuthenticatedLayout>
 </template>
 <style>
+.buttons {
+    display: inline-flex;
+    background-color: #f1f3f4;
+    padding: 4px;
+    border-radius: 8px;
+    margin-bottom: 10px;
+    border: 1px solid #dfe1e5;
+}
+
+/* Общие стили кнопок */
+.buttons button {
+    border: none;
+    background: transparent;
+    padding: 6px 16px;
+    font-size: 14px;
+    font-weight: 500;
+    color: #5f6368;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+    outline: none;
+}
+
+/* Ховер-эффект для неактивных кнопок */
+.buttons button:hover:not(.selected) {
+    background-color: #e8eaed;
+    color: #202124;
+}
+
+/* Стиль активной (выбранной) кнопки */
+.buttons button.selected {
+    background-color: #ffffff;
+    color: #1a73e8;
+    box-shadow: 0 1px 3px rgba(60, 64, 67, 0.3);
+}
+
+/* Эффект при нажатии */
+.buttons button:active {
+    transform: scale(0.97);
+}
+
 .hours-container {
     padding-bottom: 10px;
 }
 .working-hours div {
     margin-bottom: 1rem;
 }
+
 input {
     margin-left: 0.5rem;
 }
 
-/* Стилізація робочих клітинок (опціонально) */
-:deep(.calendar_default_cell_business) {
-    background-color: #ffffff;
-}
-:deep(.calendar_default_cell) {
-    background-color: #b51c1c;
-}
-/* Контейнер */
 .working-hours-container {
     max-width: 685px;
     padding: 20px;
@@ -552,13 +542,13 @@ input {
     gap: 10px 30px;
 }
 
-/* Рядки з інпутами */
 .working-hours-container div {
     margin-bottom: 15px;
     display: flex;
     flex-direction: column;
     gap: 8px;
 }
+
 .hours-row {
     display: flex;         /* Вмикаємо гнучкий контейнер (усі в рядок) */
     align-items: center;   /* Вирівнюємо всі елементи по центру вертикалі */
@@ -572,7 +562,6 @@ input {
     text-align: center;
 }
 
-/* Стилізація полів вводу часу */
 input[type="time"] {
     padding: 8px 12px;
     border: 1px solid #ddd;
@@ -589,7 +578,6 @@ input[type="time"]:focus {
     box-shadow: 0 0 0 3px rgba(66, 184, 131, 0.2);
 }
 
-/* Кнопка */
 .save-hours {
     width: 30%;
     padding: 10px;
@@ -613,13 +601,12 @@ input[type="time"]:focus {
 .save-hours:active {
     transform: translateY(1px);
 }
-/* 1. Modal Background Mask */
+
 .modal_default_background {
     background-color: #000;
     opacity: 0.5;
 }
 
-/* 2. Main Modal Container */
 .modal_default_main {
     border-radius: 8px;
     border: 1px solid #ccc;
@@ -627,17 +614,14 @@ input[type="time"]:focus {
     font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
 }
 
-/* 3. Modal Inner Content Padding */
 .modal_default_inner {
     padding: 20px;
 }
 
-/* 4. Form Items (Labels + Inputs) */
 .modal_default_form_item {
     margin-bottom: 15px;
 }
 
-/* Labels */
 .modal_default_form_item_label {
     font-weight: 600;
     color: #333;
@@ -646,7 +630,6 @@ input[type="time"]:focus {
     margin-left: 0.5rem;
 }
 
-/* Inputs, Textareas, Date/Time pickers */
 .modal_default_form_item input,
 .modal_default_form_item textarea,
 .modal_default_form_item select {
@@ -658,7 +641,6 @@ input[type="time"]:focus {
     font-family: inherit;
 }
 
-/* Focused Input */
 .modal_default_form_item input:focus,
 .modal_default_form_item textarea:focus {
     border-color: #3879d9;
@@ -666,14 +648,16 @@ input[type="time"]:focus {
     box-shadow: 0 0 3px rgba(56, 121, 217, 0.3);
 }
 
-/* 5. Button Container */
+.modal_default_form_item_time_list {
+    margin-left: 9px !important;
+}
+
 .modal_default_buttons {
     text-align: right;
     padding-top: 10px;
     border-top: 1px solid #eee;
 }
 
-/* Buttons General */
 .modal_default_buttons button {
     padding: 8px 15px;
     border-radius: 4px;
@@ -683,7 +667,6 @@ input[type="time"]:focus {
     margin-left: 10px;
 }
 
-/* OK Button */
 .modal_default_ok {
     background-color: #3879d9;
     color: white;
@@ -694,7 +677,6 @@ input[type="time"]:focus {
     background-color: #2c5da5;
 }
 
-/* Cancel Button */
 .modal_default_cancel {
     background-color: #f4f4f4;
     color: #333;
@@ -715,59 +697,31 @@ input[type="time"]:focus {
     position: relative;
 }
 
-/*   custom*/
-.custom-dropdown {
-    position: relative;
-    width: 100%;
-    user-select: none;
-    margin-left: 0.5rem;
-}
-
-.dropdown-selected {
-    padding: 10px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    background: white;
-}
-
-.dropdown-options {
-    display: none; /* Приховано за замовчуванням */
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    border: 1px solid #ccc;
-    border-top: none;
-    background: white;
-    z-index: 1000;
-}
-
-.dropdown-option {
-    padding: 10px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-}
-
 .dropdown-option:hover {
     background-color: #f0f0f0;
 }
 
-/* Стиль для кольорового квадрата */
-.color-box {
-    width: 30px;
-    height: 20px;
-    margin-right: 10px;
-    border-radius: 3px;
-    border: 1px solid rgba(0,0,0,0.2);
+.cell-badge-container {
+    width: 100%;
+    height: 100%;
+    position: relative;
 }
 
-/* Клас для показу списку через JS */
-.custom-dropdown.open .dropdown-options {
+.cell-badge-container .badge {
     display: block;
+    position: absolute;
+    top: 0;
+    right: 6px;
+    color: #ababab;
+    padding: 0 5px;
+    font-size: 18px;
+    font-weight: bold;
+    z-index: 10;
+    cursor: pointer;
+}
+
+.cell-badge-container .badge:hover {
+    color: #161414;
 }
 
 /* Адаптивність: розміщення інпутів в один рядок на десктопах */
