@@ -41,7 +41,14 @@ const form = useForm('post', route('dashboard.store'),{
     weekendStart: hours?.[0]?.weekend_start || '',
     weekendEnd: hours?.[0]?.weekend_end || '',
 });
+const calendarMessage = ref("");
 
+const showMessage = (text) => {
+    calendarMessage.value = text;
+    setTimeout(() => {
+        calendarMessage.value = "";
+    }, 3000); // Исчезнет через 3 секунды
+};
 const onBeforeCellRender = (args) => {
     const cellValue = args.cell.start.value;
     const cellDate = args.cell.start;
@@ -107,32 +114,63 @@ const addAdditionalCells = (cell, is_enabled) => {
 
 const onTimeRangeSelected = async (args) => {
     const calendar = args.control;
-    const now = new DayPilot.Date(); // Текущая дата и время
+    const now = new DayPilot.Date();
+    const cellValue = args.start.value;
+
     if (args.start < now) {
         calendar.clearSelection();
         return;
     }
+    const isOccupied = eventCells.value?.some(e => e.start === cellValue);
+    if (isOccupied) {
+        calendar.clearSelection();
+        calendar.message("Эта ячейка уже занята");
+        return;
+    }
+
+    const dayOfWeek = args.start.getDayOfWeek();
+    const hour = args.start.toString("HH:mm");
+    const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
+
+    const startLimit = isWeekend ? form.weekendStart : form.weekdayStart;
+    const endLimit = isWeekend ? form.weekendEnd : form.weekdayEnd;
+
+    // Базовый статус по графику
+    let isWorking = (hour >= startLimit && hour < endLimit);
+
+    // Проверка исключений из базы (additionalCells)
+    if (additionalCells.value) {
+        const override = additionalCells.value.find(e => e.start.replace(" ", "T") === cellValue);
+        if (override) {
+            isWorking = !!override.is_enabled;
+        }
+    }
+
     if (lastClickedBadge === 'icon-plus') {
-        addAdditionalCells(args.start.value, true);
+        addAdditionalCells(cellValue, true);
         calendar.clearSelection();
         return;
     }
     if (lastClickedBadge === 'icon-remove') {
-        addAdditionalCells(args.start.value, false);
+        addAdditionalCells(cellValue, false);
         calendar.clearSelection();
         return;
     }
-    calendar.clearSelection();
+    if (!isWorking) {
+        calendar.clearSelection();
+        showMessage("Це неробочий час");
+        return;
+    }
 
+    // ОТКРЫТИЕ МОДАЛКИ (только для рабочих ячеек)
+    calendar.clearSelection();
     modalData.value = {
         date: args.start.value,
         start: args.start.toString("HH:mm"),
         end: args.start.addMinutes(30).toString("HH:mm"),
         colorCustom: ""
     };
-    eventModalRef.value.open({
-        modalData
-    });
+    eventModalRef.value.open({ modalData });
 };
 
 const defineEventCells = (startCell, endCell) => {
@@ -371,6 +409,11 @@ onMounted(() => {
                         </div>
                     </form>
                 </div>
+                <transition name="fade">
+                    <div v-if="calendarMessage" class="custom-calendar-message">
+                        {{ calendarMessage }}
+                    </div>
+                </transition>
                 <div
                     class="overflow-hidden bg-white shadow-sm sm:rounded-lg dark:bg-gray-800"
                 >
@@ -476,6 +519,19 @@ onMounted(() => {
     </AuthenticatedLayout>
 </template>
 <style>
+.custom-calendar-message {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #333;
+    color: white;
+    padding: 10px 20px;
+    border-radius: 4px;
+    z-index: 9999;
+}
+.fade-enter-active, .fade-leave-active { transition: opacity 0.5s; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
 .buttons {
     display: inline-flex;
     background-color: #f1f3f4;
