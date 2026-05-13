@@ -64,14 +64,22 @@ const initPhoneMask = () => {
     setTimeout(() => clearInterval(interval), 2000);
 };
 
-const open = async (data: any) => {
+const open = async (data: any, validationContext = { eventCells: [], additionalCells: [] }) => {
+
     const isEdit = !!(data?.modalData && data?.modalData.value.id);
-    const modalData = data?.modalData?.value || data || props.initialData;
-    currentModalData = modalData;
+
+    // 1. Извлекаем "чистые" сырые данные без Vue-оберток
+    let rawData = data?.modalData?.value || data || props.initialData;
+    // Если это Ref, забираем его значение, иначе делаем глубокую копию
+    rawData = JSON.parse(JSON.stringify(rawData));
+    currentModalData = rawData;
+
+    // Используем безопасный дефолт, если context не пришел
+    const context = validationContext || { eventCells: [], additionalCells: [] };
 
     document.addEventListener('click', handleGlobalClick);
 
-    const selectedColor = COLORS.find(c => c.id === modalData.colorCustom) || { id: "#ccc", name: "Виберіть колір", color: "#ccc" };
+    const selectedColor = COLORS.find(c => c.id === rawData.colorCustom) || { id: "#ccc", name: "Виберіть колір", color: "#ccc" };
 
     const colorOptionsHtml = COLORS.map(c => `
         <div class="dropdown-option" data-value="${c.id}" style="padding:5px; cursor:pointer; display:flex; align-items:center;">
@@ -89,26 +97,80 @@ const open = async (data: any) => {
                 ${colorOptionsHtml}
             </div>
         </div>`;
+    const generateAvailableTimeOptions = (selectedDateStr: string, context: any) => {
+        const options: { name: string, id: string }[] = [];
+        const now = new Date();
 
+        // 1. Определяем тип дня (будни или выходные)
+        const selectedDate = new Date(selectedDateStr);
+        const dayOfWeek = selectedDate.getDay(); // 0 = Воскресенье, 6 = Суббота
+        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+
+        // 2. Получаем правильные границы из объекта workingHours
+        const hours = context.workingHours || {};
+        const startTime = isWeekend ? hours.weekendStart : hours.weekdayStart; // "09:00" или "08:00"
+        const endTime = isWeekend ? hours.weekendEnd : hours.weekdayEnd;
+        // Генерируем шаги времени на сутки (например, с 08:00 до 21:00 или полные 24 часа)
+        for (let hour = 0; hour < 24; hour++) {
+            for (let min of ['00', '30']) {
+                const timeStr = `${String(hour).padStart(2, '0')}:${min}`;
+                const fullDateTimeStr = `${selectedDateStr}T${timeStr}:00`;
+                const checkDate = new Date(fullDateTimeStr);
+
+                // 1. Проверка на прошлое время (!past)
+                if (checkDate < now) continue;
+                // 3. Проверка на рабочее время (isWorking)
+                // Время должно быть >= startTime И <= endTime. Если не попадает — пропускаем ячейку.
+                // Строковое сравнение "08:30" >= "08:00" в JS работает корректно.
+                if (!startTime || !endTime) continue; // Защита, если данные не загрузились
+
+                const isWorkingSlot = timeStr >= startTime && timeStr < endTime;
+
+                // Если это НЕ рабочее время — исключаем из списка доступных
+                if (!isWorkingSlot) continue;
+                // 3. Проверка на занятость (!isOccupied / !eventCells)
+                const isOccupied = context.eventCells?.some((e: any) =>{
+                    return e.start === fullDateTimeStr
+                });
+                if (isOccupied) continue;
+
+                // 4. Проверка на заблокированные админом ячейки (!additionalCells)
+                const isBlocked = context.additionalCells?.some((e: any) =>
+                {
+                    // return e.start === timeStr;
+                    return e.start === fullDateTimeStr;
+                });
+                if (isBlocked) continue;
+
+                // Если все проверки пройдены — добавляем в доступные
+                options.push({ name: timeStr, id: timeStr });
+            }
+        }
+        return options;
+    };
+    const dateStr = new DayPilot.Date(rawData.date || rawData.start).toString("yyyy-MM-dd");
+    // Генерируем массив разрешенных временных точек
+    const allowedTimes = generateAvailableTimeOptions(dateStr, context);
+    console.log('allowedTimes');
+    console.log(allowedTimes);
     const formModal = [
         { name: "Name", id: "name", type: "text" },
         { name: "Phone", id: "phone", type: "text" },
         { name: "Date", id: "date", type: "date", disabled: !isEdit },
-        { name: "Start", id: "start", type: "time", timeInterval: 30 },
-        { name: "End", id: "end", type: "time", timeInterval: 30 },
+        { name: "Start", id: "start",  type: "select", options: allowedTimes },
+        { name: "End", id: "end",  type: "select", options: allowedTimes },
         { name: "Note", id: "note", type: "textarea", height: 50 },
         { name: "Color", id: "colorCustom", html: colorDropdownHtml }
     ];
 
     initPhoneMask();
-    const modal = await DayPilot.Modal.form(formModal, modalData);
+    const modal = await DayPilot.Modal.form(formModal, rawData);
     document.removeEventListener('click', handleGlobalClick);
 
     if (modal.canceled) return;
 
-    const dateStr = new DayPilot.Date(modal.result.date).toString("yyyy-MM-dd");
     const params = {
-        id: isEdit ? modalData.id : DayPilot.guid(),
+        id: isEdit ? rawData.id : DayPilot.guid(),
         name: String(modal.result.name || ''),
         phone: String(modal.result.phone || ''),
         // Убеждаемся, что здесь только строки
@@ -120,7 +182,7 @@ const open = async (data: any) => {
     if (isEdit) {
         router.patch(route('events.update', { id: params.id }), params, {
             onSuccess: () => {
-                emit('update', modalData, params, params.id);
+                emit('update', rawData, params, params.id);
                 emit('close');
             }
         });
@@ -136,3 +198,6 @@ const open = async (data: any) => {
 
 defineExpose({ open });
 </script>
+<template>
+
+</template>

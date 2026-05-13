@@ -16,12 +16,18 @@ Route::get('/', function () {
         'laravelVersion' => Application::VERSION,
         'phpVersion' => PHP_VERSION,
     ]);
-});
+})->name('welcome');
 
-Route::middleware(['auth', 'verified'])->group(function () {
+Route::middleware(['auth', 'verified', 'admin'])->group(function () {
     Route::controller(HoursController::class)->group(function () {
         Route::get('/dashboard', 'index')->name('dashboard');
         Route::post('/dashboard', 'store')->name('dashboard.store');
+
+    });
+});
+Route::middleware(['auth', 'verified'])->group(function () {
+    Route::controller(HoursController::class)->group(function () {
+        Route::get('/api/dashboard', 'getHours')->name('/api/dashboard.getHours');
     });
     Route::controller(EventsController::class)->group(function () {
         Route::get('/events', 'getAll')->name('events.getAll');

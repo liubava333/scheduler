@@ -23,6 +23,8 @@ class EventCellsController extends Controller
             'cells' => 'required|array|min:1',
             'cells.*' => 'required|date',
         ]);
+        // 1. Удаляем все старые ячейки для этого конкретного события
+        EventCells::where('event_id', $validated['event_id'])->delete();
 
         $data = collect($validated['cells'])->map(function ($cell) use ($validated) {
             return [
@@ -34,7 +36,7 @@ class EventCellsController extends Controller
         })->toArray();
 
         // Один запрос к базе данных вместо десятка ВМЕСТО ЦИКЛА!!
-        EventCells::insert($data);
+        EventCells::insertOrIgnore($data);
 
         return redirect()->back();
     }

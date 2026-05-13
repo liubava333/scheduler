@@ -18,6 +18,11 @@ class HoursController extends Controller
         ]);
     }
 
+    public function getHours()
+    {
+        return response()->json(Hour::all());
+    }
+
     public function store(Request $request)
     {
         $request->validate([
