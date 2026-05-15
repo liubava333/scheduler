@@ -117,32 +117,31 @@ const open = async (data: any, validationContext = { eventCells: [], additionalC
                 const fullDateTimeStr = `${selectedDateStr}T${timeStr}:00`;
                 const checkDate = new Date(fullDateTimeStr);
 
-                // 1. Проверка на прошлое время (!past)
                 if (checkDate < now) continue;
-                // 3. Проверка на рабочее время (isWorking)
                 // Время должно быть >= startTime И <= endTime. Если не попадает — пропускаем ячейку.
                 // Строковое сравнение "08:30" >= "08:00" в JS работает корректно.
                 if (!startTime || !endTime) continue; // Защита, если данные не загрузились
 
                 const isWorkingSlot = timeStr >= startTime && timeStr < endTime;
 
-                // Если это НЕ рабочее время — исключаем из списка доступных
-                if (!isWorkingSlot) continue;
-                // 3. Проверка на занятость (!isOccupied / !eventCells)
-                const isOccupied = context.eventCells?.some((e: any) =>{
+                const cellSetting = context.additionalCells?.find((e: any) => e.start === fullDateTimeStr);
+
+                if (cellSetting) {
+                    // Если админ явно отключил ячейку (isEnabled == 0), то время недоступно
+                    if (cellSetting.is_enabled === 0) {
+                        continue;
+                    }
+                    if (!isWorkingSlot && cellSetting.is_enabled !== 1) continue;
+                } else {
+                    // Если это НЕ рабочее время — исключаем из списка доступных
+                    if (!isWorkingSlot ) continue;
+                }
+
+                const isOccupied = context.eventCells?.some((e: any) => {
                     return e.start === fullDateTimeStr
                 });
                 if (isOccupied) continue;
 
-                // 4. Проверка на заблокированные админом ячейки (!additionalCells)
-                const isBlocked = context.additionalCells?.some((e: any) =>
-                {
-                    // return e.start === timeStr;
-                    return e.start === fullDateTimeStr;
-                });
-                if (isBlocked) continue;
-
-                // Если все проверки пройдены — добавляем в доступные
                 options.push({ name: timeStr, id: timeStr });
             }
         }
@@ -151,14 +150,31 @@ const open = async (data: any, validationContext = { eventCells: [], additionalC
     const dateStr = new DayPilot.Date(rawData.date || rawData.start).toString("yyyy-MM-dd");
     // Генерируем массив разрешенных временных точек
     const allowedTimes = generateAvailableTimeOptions(dateStr, context);
-    console.log('allowedTimes');
-    console.log(allowedTimes);
     const formModal = [
         { name: "Name", id: "name", type: "text" },
         { name: "Phone", id: "phone", type: "text" },
         { name: "Date", id: "date", type: "date", disabled: !isEdit },
         { name: "Start", id: "start",  type: "select", options: allowedTimes },
-        { name: "End", id: "end",  type: "select", options: allowedTimes },
+        { name: "End", id: "end",  type: "select", options: allowedTimes,
+            validate: (args) => {
+                const startValue = args.result.start;
+                const endValue = args.value;
+
+                // Валидация логики: End должно быть больше Start
+                if (startValue && endValue) {
+                    const [startH, startM] = startValue.split(':').map(Number);
+                    const [endH, endM] = endValue.split(':').map(Number);
+
+                    const startMinutes = startH * 60 + startM;
+                    const endMinutes = endH * 60 + endM;
+
+                    if (endMinutes < startMinutes + 30) {
+                        args.valid = false; // Блокируем отправку
+                        args.message = "Час закінчення має бути мінімум на 30 хвилин більшим за початок!";
+                    }
+                }
+            }
+        },
         { name: "Note", id: "note", type: "textarea", height: 50 },
         { name: "Color", id: "colorCustom", html: colorDropdownHtml }
     ];
