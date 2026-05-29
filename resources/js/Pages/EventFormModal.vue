@@ -101,16 +101,14 @@ const open = async (data: any, validationContext = { eventCells: [], additionalC
         const options: { name: string, id: string }[] = [];
         const now = new Date();
 
-        // 1. Определяем тип дня (будни или выходные)
         const selectedDate = new Date(selectedDateStr);
-        const dayOfWeek = selectedDate.getDay(); // 0 = Воскресенье, 6 = Суббота
+        const dayOfWeek = selectedDate.getDay();
         const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
 
-        // 2. Получаем правильные границы из объекта workingHours
         const hours = context.workingHours || {};
-        const startTime = isWeekend ? hours.weekendStart : hours.weekdayStart; // "09:00" или "08:00"
+        const startTime = isWeekend ? hours.weekendStart : hours.weekdayStart;
         const endTime = isWeekend ? hours.weekendEnd : hours.weekdayEnd;
-        // Генерируем шаги времени на сутки (например, с 08:00 до 21:00 или полные 24 часа)
+
         for (let hour = 0; hour < 24; hour++) {
             for (let min of ['00', '30']) {
                 const timeStr = `${String(hour).padStart(2, '0')}:${min}`;
@@ -118,28 +116,19 @@ const open = async (data: any, validationContext = { eventCells: [], additionalC
                 const checkDate = new Date(fullDateTimeStr);
 
                 if (checkDate < now) continue;
-                // Время должно быть >= startTime И <= endTime. Если не попадает — пропускаем ячейку.
-                // Строковое сравнение "08:30" >= "08:00" в JS работает корректно.
-                if (!startTime || !endTime) continue; // Защита, если данные не загрузились
+                if (!startTime || !endTime) continue;
 
                 const isWorkingSlot = timeStr >= startTime && timeStr < endTime;
-
                 const cellSetting = context.additionalCells?.find((e: any) => e.start === fullDateTimeStr);
 
                 if (cellSetting) {
-                    // Если админ явно отключил ячейку (isEnabled == 0), то время недоступно
-                    if (cellSetting.is_enabled === 0) {
-                        continue;
-                    }
+                    if (cellSetting.is_enabled === 0) continue;
                     if (!isWorkingSlot && cellSetting.is_enabled !== 1) continue;
                 } else {
-                    // Если это НЕ рабочее время — исключаем из списка доступных
-                    if (!isWorkingSlot ) continue;
+                    if (!isWorkingSlot) continue;
                 }
 
-                const isOccupied = context.eventCells?.some((e: any) => {
-                    return e.start === fullDateTimeStr
-                });
+                const isOccupied = context.eventCells?.some((e: any) => e.start === fullDateTimeStr);
                 if (isOccupied) continue;
 
                 options.push({ name: timeStr, id: timeStr });
@@ -147,15 +136,102 @@ const open = async (data: any, validationContext = { eventCells: [], additionalC
         }
         return options;
     };
-    const dateStr = new DayPilot.Date(rawData.date || rawData.start).toString("yyyy-MM-dd");
-    // Генерируем массив разрешенных временных точек
-    const allowedTimes = generateAvailableTimeOptions(dateStr, context);
+
+// Вспомогательная функция для генерации списка END на основе выбранного СТАРТА
+// Выносим её отдельно, чтобы вызывать и при инициализации, и при изменении (onchange)
+    const getFilteredEndTimes = (startTimeStr: string, allowedStartTimes: { id: string }[]) => {
+        let filteredEndTimes: { name: string, id: string }[] = [];
+        if (!startTimeStr) return allowedStartTimes;
+
+        const [startH, startM] = startTimeStr.split(':').map(Number);
+        const startMinutes = startH * 60 + startM;
+
+        const allDaySlots: string[] = [];
+        for (let h = 0; h < 24; h++) {
+            for (let m of ['00', '30']) {
+                allDaySlots.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+            }
+        }
+        allDaySlots.push("24:00");
+
+        for (const slot of allDaySlots) {
+            const [endH, endM] = slot.split(':').map(Number);
+            const endMinutes = endH * 60 + endM;
+
+            if (endMinutes <= startMinutes) continue;
+
+            const prevSlotMinutes = endMinutes - 30;
+            const prevH = Math.floor(prevSlotMinutes / 60);
+            const prevM = prevSlotMinutes % 60;
+            const prevSlotStr = `${String(prevH).padStart(2, '0')}:${String(prevM).padStart(2, '0')}`;
+
+            if (allowedStartTimes.some(o => o.id === prevSlotStr)) {
+                filteredEndTimes.push({ name: slot, id: slot });
+            } else {
+                break; // Наткнулись на недоступную ячейку — прерываем цепочку
+            }
+        }
+        return filteredEndTimes;
+    };
+
+    let dateStr = new DayPilot.Date(rawData.date || rawData.start).toString("yyyy-MM-dd");
+    const defaultStartValue = rawData.start ? new DayPilot.Date(rawData.date || rawData.start).toString("HH:mm") : "";
+
+    // Генерируем базовый список разрешенных ячеек
+    const allowedStartTimes = generateAvailableTimeOptions(dateStr, context);
+
+    // Логика фильтрации для поля END (выполняется ОДИН раз при создании массива формы)
+    let allowedEndTimes: { name: string, id: string }[] = [];
+
+    if (defaultStartValue) {
+        const [startH, startM] = defaultStartValue.split(':').map(Number);
+        const startMinutes = startH * 60 + startM;
+
+        // Генерируем временную шкалу на 24 часа для поиска возможных точек завершения
+        const allDaySlots: string[] = [];
+        for (let h = 0; h < 24; h++) {
+            for (let m of ['00', '30']) {
+                allDaySlots.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+            }
+        }
+        // Добавляем финальную точку суток
+        allDaySlots.push("24:00");
+
+        // Запускаем проверку слотов, идущих строго ПОСЛЕ выбранного старта
+        for (const slot of allDaySlots) {
+            const [endH, endM] = slot.split(':').map(Number);
+            const endMinutes = endH * 60 + endM;
+
+            if (endMinutes <= startMinutes) continue;
+
+            // Главное правило: проверяем ячейку, которая находится ДО этого времени окончания.
+            // Если рассматриваем End = 09:30, проверяем слот старта 09:00.
+            // Если рассматриваем End = 10:00, проверяем слот 09:30. Если 09:30 недоступен — прерываем цикл.
+            const prevSlotMinutes = endMinutes - 30;
+            const prevH = Math.floor(prevSlotMinutes / 60);
+            const prevM = prevSlotMinutes % 60;
+            const prevSlotStr = `${String(prevH).padStart(2, '0')}:${String(prevM).padStart(2, '0')}`;
+
+            // Если предыдущий 30-минутный шаг свободен — этот End валиден, добавляем его
+            if (allowedStartTimes.some(o => o.id === prevSlotStr)) {
+                allowedEndTimes.push({ name: slot, id: slot });
+            } else {
+                // Как только наткнулись на недоступную ячейку (например 09:30 занято) —
+                // мы завершаем добавление времени. Дальнейшее время (10:00, 10:30) добавлено НЕ БУДЕТ.
+                break;
+            }
+        }
+    } else {
+        // На случай, если дефолтного старта нет, отдаем весь список (безопасный фолбек)
+        allowedEndTimes = [...allowedStartTimes];
+    }
+
     const formModal = [
         { name: "Name", id: "name", type: "text" },
         { name: "Phone", id: "phone", type: "text" },
         { name: "Date", id: "date", type: "date", disabled: !isEdit },
-        { name: "Start", id: "start",  type: "select", options: allowedTimes },
-        { name: "End", id: "end",  type: "select", options: allowedTimes,
+        { name: "Start", id: "start",  type: "select", options: allowedStartTimes },
+        { name: "End", id: "end",  type: "select", options: allowedEndTimes,
             validate: (args) => {
                 const startValue = args.result.start;
                 const endValue = args.value;
@@ -180,7 +256,51 @@ const open = async (data: any, validationContext = { eventCells: [], additionalC
     ];
 
     initPhoneMask();
-    const modal = await DayPilot.Modal.form(formModal, rawData);
+    const options = {
+        onShow: (args) => {
+            // Используем setTimeout(..., 0), чтобы гарантировать, что элементы отрисовались в DOM
+            setTimeout(() => {
+                // Находим нативные селекты в DOM по их именам
+                const startSelect = args.root.querySelector('select[name="start"]') as HTMLSelectElement | null;
+                const endSelect = args.root.querySelector('select[name="end"]') as HTMLSelectElement | null;
+
+                if (startSelect && endSelect) {
+                    startSelect.addEventListener('change', function(e: any) {
+                        const selectedStart = e.target.value;
+
+                        // 1. Пересчитываем массив разрешенных временных точек для ЭНД на основе новой строки старта
+                        const updatedEndOptions = getFilteredEndTimes(selectedStart, allowedStartTimes);
+
+                        // Запоминаем, какое значение в End выбрано сейчас, чтобы попробовать его сохранить
+                        const currentEndValue = endSelect.value;
+
+                        // 2. Полностью очищаем старые option из селекта End в DOM
+                        endSelect.innerHTML = '';
+
+                        // 3. Наполняем селект новыми отфильтрованными элементами option
+                        updatedEndOptions.forEach((opt) => {
+                            const optionElement = document.createElement('option');
+                            optionElement.value = opt.id;
+                            optionElement.textContent = opt.name;
+                            endSelect.appendChild(optionElement);
+                        });
+
+                        // 4. Проверяем, осталось ли старое выбранное значение валидным в новом списке
+                        const isStillValid = updatedEndOptions.some(o => o.id === currentEndValue);
+
+                        if (isStillValid) {
+                            endSelect.value = currentEndValue; // Оставляем старый выбор пользователя
+                        } else if (updatedEndOptions.length > 0) {
+                            endSelect.value = updatedEndOptions[0].id; // Или принудительно ставим минимальный доступный (+30 минут)
+                        } else {
+                            endSelect.value = '';
+                        }
+                    });
+                }
+            }, 0);
+        }
+    };
+    const modal = await DayPilot.Modal.form(formModal, rawData, options);
     document.removeEventListener('click', handleGlobalClick);
 
     if (modal.canceled) return;
