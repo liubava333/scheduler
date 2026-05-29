@@ -31,7 +31,7 @@ class EventsController extends Controller
         $res = Events::create($validated);
 
         return redirect()->back()->with([
-            'success' => 'Подія успішно додана!',
+            'success' => 'Ваш час заброньовано!',
             'eventId' => $res->id
         ]);
     }

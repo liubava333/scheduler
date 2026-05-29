@@ -34,7 +34,6 @@ export function useCalendarApi(weekRef: any) {
         }
     };
 
-    // 2. Сохранение настроек времени (только для админки)
     const saveWorkingHours = (weekRef: any) => {
         // Очищаем старые ошибки перед новой проверкой
         form.clearErrors();
@@ -139,8 +138,8 @@ export function useCalendarApi(weekRef: any) {
         }, {
             preserveState: true,
             onSuccess: async () => {
-                console.log('Event cells synchronized');
-                await  fetchEvents();
+                console.log('The event cells have been successfully saved.');
+                await fetchEvents();
                 if (typeof fetchEventCells === 'function') {
                     await fetchEventCells();
                 }

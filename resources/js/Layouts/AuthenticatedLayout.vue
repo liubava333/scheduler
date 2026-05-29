@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 import Dropdown from '@/Components/Dropdown.vue';
 import DropdownLink from '@/Components/DropdownLink.vue';
@@ -9,13 +9,55 @@ import { Link } from '@inertiajs/vue3';
 import { usePage } from '@inertiajs/vue3';
 
 const page = usePage();
-const flashSuccess = computed(() => page.props.flash.success);
-const flashError = computed(() => page.props.flash.error);
+// Получаем данные из Laravel props
+const flashSuccess = computed(() => page.props.flash?.success);
+const flashError = computed(() => page.props.flash?.error);
 const showingNavigationDropdown = ref(false);
 const isAdmin = computed(() => {
     const user = page.props.auth?.user;
     return !!user?.name && user?.role === 'admin';
 });
+// Состояние видимости для каждого типа сообщения
+const isSuccessVisible = ref(false);
+const isErrorVisible = ref(false);
+
+// Переменные для хранения идентификаторов таймеров
+let successTimeout: ReturnType<typeof setTimeout> | null = null;
+let errorTimeout: ReturnType<typeof setTimeout> | null = null;
+
+// Локальные переменные для хранения текста сообщений
+const localSuccessMessage = ref('');
+const localErrorMessage = ref('');
+
+watch(flashSuccess, (newValue) => {
+    // Реагируем только если пришло РЕАЛЬНОЕ сообщение (игнорируем null)
+    if (newValue) {
+        localSuccessMessage.value = newValue;
+        isSuccessVisible.value = true;
+
+        if (successTimeout) clearTimeout(successTimeout);
+
+        successTimeout = setTimeout(() => {
+            isSuccessVisible.value = false;
+            localSuccessMessage.value = '';
+        }, 4000);
+    }
+}, { immediate: true });
+
+// Отслеживаем ERROR
+watch(flashError, (newValue) => {
+    if (newValue) {
+        localErrorMessage.value = newValue;
+        isErrorVisible.value = true;
+
+        if (errorTimeout) clearTimeout(errorTimeout);
+
+        errorTimeout = setTimeout(() => {
+            isErrorVisible.value = false;
+            localErrorMessage.value = '';
+        }, 4000);
+    }
+}, { immediate: true });
 </script>
 
 <template>
@@ -195,14 +237,14 @@ const isAdmin = computed(() => {
                     <slot name="header" />
                 </div>
             </header>
-            <div v-if="flashSuccess" class="max-w-7xl mx-auto mt-4 px-4 sm:px-6 lg:px-8">
+            <div v-if="isSuccessVisible && localSuccessMessage" class="max-w-7xl mx-auto mt-4 px-4 sm:px-6 lg:px-8">
                 <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative">
-                    {{ flashSuccess }}
+                    {{ localSuccessMessage }}
                 </div>
             </div>
-            <div v-if="flashError" class="max-w-7xl mx-auto mt-4 px-4 sm:px-6 lg:px-8">
+            <div v-if="isErrorVisible && localErrorMessage" class="max-w-7xl mx-auto mt-4 px-4 sm:px-6 lg:px-8">
                 <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative">
-                    {{ flashError }}
+                    {{ localErrorMessage }}
                 </div>
             </div>
             <!-- Page Content -->

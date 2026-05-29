@@ -93,7 +93,6 @@ const config = reactive({
     },
 });
 
-
 const getAdditionalCellsPortal = async () => {
     axios.get(route('additional.getAll'))
         .then(response => {
