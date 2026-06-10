@@ -57,7 +57,7 @@ const initPhoneMask = () => {
     const interval = setInterval(() => {
         const el = document.querySelector('.modal_default_main input[name="phone"]') as HTMLInputElement;
         if (el) {
-            IMask(el, { mask: '+38 (090) 000-00-00', lazy: false });
+            IMask(el, { mask: '+38 (000) 000-00-00', lazy: false });
             clearInterval(interval);
         }
     }, 10);
@@ -226,17 +226,48 @@ const open = async (data: any, validationContext = { eventCells: [], additionalC
         allowedEndTimes = [...allowedStartTimes];
     }
 
+    // 1. Создаем внешнюю переменную для перехвата данных (замыкание)
+    let externalFinalResult: any = null;
     const formModal = [
-        { name: "Name", id: "name", type: "text" },
-        { name: "Phone", id: "phone", type: "text" },
-        { name: "Date", id: "date", type: "date", disabled: !isEdit },
-        { name: "Start", id: "start",  type: "select", options: allowedStartTimes },
-        { name: "End", id: "end",  type: "select", options: allowedEndTimes,
+        { name: "Ім'я", id: "name", type: "text",
             validate: (args) => {
-                const startValue = args.result.start;
-                const endValue = args.value;
+                const value = args.value ? args.value.trim() : "";
 
-                // Валидация логики: End должно быть больше Start
+                if (!value) {
+                    args.valid = false; // Блокируем отправку формы
+                    args.message = `Полe "Ім'я" є обов'язковим для заповнення!`; // Выводим ошибку
+                }
+            }
+        },
+        { name: "Телефон", id: "phone", type: "text",
+            validate: (args) => {
+                const value = args.value ? args.value.replace(/\D/g, "") : ""; // Удаляем все не-цифры
+
+                if (!value) {
+                    args.valid = false;
+                    args.message = "Поле \"Номер телефону\" є обов'язковим для заповнення!";
+                } else if (value.length < 12) { // Например, проверка на минимальную длину номера
+                    args.valid = false;
+                    args.message = "Введіть правильний номер телефону!";
+                }
+            }
+        },
+        { name: "Дата", id: "date", type: "date", disabled: !isEdit },
+        { name: "Початок", id: "start",  type: "select", options: allowedStartTimes },
+        { name: "Закінчення", id: "end",  type: "select", options: allowedEndTimes,
+            validate: (args) => {
+                // Жёстко вытаскиваем элемент из модального окна по его ID/Name
+                const endSelectElement = document.querySelector('select[name="end"]') as HTMLSelectElement | null;
+                // Если DayPilot потерял значение, но в DOM-селекте оно физически выбрано — восстанавливаем его в стейт
+                if (endSelectElement) {
+                    args.result.end = endSelectElement.value;
+                    // Перезаписываем локальную переменную для выполнения валидации ниже
+                    var effectiveEndValue = endSelectElement.value;
+                } else {
+                    var effectiveEndValue = args.value;
+                }
+                const startValue = args.result.start;
+                const endValue = effectiveEndValue;
                 if (startValue && endValue) {
                     const [startH, startM] = startValue.split(':').map(Number);
                     const [endH, endM] = endValue.split(':').map(Number);
@@ -249,6 +280,13 @@ const open = async (data: any, validationContext = { eventCells: [], additionalC
                         args.message = "Час закінчення має бути мінімум на 30 хвилин більшим за початок!";
                     }
                 }
+                args.value = endValue
+                args.result.end = endValue;
+                // Собираем финальный объект результата со всеми заполненными полями формы
+                externalFinalResult = {
+                    ...args.result,
+                    end: endValue // Принудительно вшиваем корректный End
+                };
             }
         },
         { name: "Note", id: "note", type: "textarea", height: 50 },
@@ -268,33 +306,37 @@ const open = async (data: any, validationContext = { eventCells: [], additionalC
                     startSelect.addEventListener('change', function(e: any) {
                         const selectedStart = e.target.value;
 
-                        // 1. Пересчитываем массив разрешенных временных точек для ЭНД на основе новой строки старта
+                        // Пересчитываем массив разрешенных временных точек для ЭНД на основе новой строки старта
                         const updatedEndOptions = getFilteredEndTimes(selectedStart, allowedStartTimes);
-
-                        // Запоминаем, какое значение в End выбрано сейчас, чтобы попробовать его сохранить
                         const currentEndValue = endSelect.value;
 
-                        // 2. Полностью очищаем старые option из селекта End в DOM
-                        endSelect.innerHTML = '';
-
-                        // 3. Наполняем селект новыми отфильтрованными элементами option
-                        updatedEndOptions.forEach((opt) => {
-                            const optionElement = document.createElement('option');
-                            optionElement.value = opt.id;
-                            optionElement.textContent = opt.name;
-                            endSelect.appendChild(optionElement);
-                        });
-
-                        // 4. Проверяем, осталось ли старое выбранное значение валидным в новом списке
-                        const isStillValid = updatedEndOptions.some(o => o.id === currentEndValue);
-
-                        if (isStillValid) {
-                            endSelect.value = currentEndValue; // Оставляем старый выбор пользователя
-                        } else if (updatedEndOptions.length > 0) {
-                            endSelect.value = updatedEndOptions[0].id; // Или принудительно ставим минимальный доступный (+30 минут)
-                        } else {
-                            endSelect.value = '';
+                        // Полностью очищаем старые option из селекта End в DOM
+                        while (endSelect.options.length > updatedEndOptions.length) {
+                            endSelect.remove(endSelect.options.length - 1);
                         }
+
+                        // Обновляем текущие или создаем строго новые по индексу
+                        updatedEndOptions.forEach((opt, index) => {
+                            let optionElement = endSelect.options[index];
+                            if (!optionElement) {
+                                optionElement = document.createElement('option');
+                                endSelect.add(optionElement);
+                            }
+                            optionElement.value = opt.id;
+                            optionElement.text = opt.name;
+                        });
+                        let newEndValue = ''
+                        const isStillValid = updatedEndOptions.some(o => o.id === currentEndValue);
+                        if (isStillValid) {
+                            newEndValue = currentEndValue; // Оставляем старый выбор пользователя
+                        } else if (updatedEndOptions.length > 0) {
+                            newEndValue= updatedEndOptions[0].id; // Или принудительно ставим минимальный доступный (+30 минут)
+                        }
+                        // Записываем значение напрямую в DOM элемент
+                        endSelect.value = newEndValue;
+                        const event = document.createEvent('HTMLEvents');
+                        event.initEvent('change', true, true);
+                        endSelect.dispatchEvent(event);
                     });
                 }
             }, 0);
@@ -311,7 +353,7 @@ const open = async (data: any, validationContext = { eventCells: [], additionalC
         phone: String(modal.result.phone || ''),
         // Убеждаемся, что здесь только строки
         start: dateStr + "T" + String(modal.result.start),
-        end: dateStr + "T" + String(modal.result.end),
+        end: dateStr + "T" + String(externalFinalResult?.end),
         note: String(modal.result.note || ''),
         color: String(modal.result.colorCustom || ''),
     };
