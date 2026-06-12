@@ -97,7 +97,8 @@ const open = async (data: any, validationContext = { eventCells: [], additionalC
                 ${colorOptionsHtml}
             </div>
         </div>`;
-    const generateAvailableTimeOptions = (selectedDateStr: string, context: any) => {
+
+    const generateAvailableTimeOptions = (selectedDateStr: string, context: any, currentSlot?: string) => {
         const options: { name: string, id: string }[] = [];
         const now = new Date();
 
@@ -115,6 +116,14 @@ const open = async (data: any, validationContext = { eventCells: [], additionalC
                 const fullDateTimeStr = `${selectedDateStr}T${timeStr}:00`;
                 const checkDate = new Date(fullDateTimeStr);
 
+                // Если это текущее редактируемое время,
+                // мы пропускаем любые проверки на занятость/прошлое время и сразу добавляем его
+                if (currentSlot && timeStr === currentSlot) {
+                    options.push({ name: timeStr, id: timeStr });
+                    continue;
+                }
+
+                // Ниже идет ваша стандартная логика проверок для остальных слотов
                 if (checkDate < now) continue;
                 if (!startTime || !endTime) continue;
 
@@ -134,7 +143,9 @@ const open = async (data: any, validationContext = { eventCells: [], additionalC
                 options.push({ name: timeStr, id: timeStr });
             }
         }
-        return options;
+
+        // Сортируем массив, если принудительно добавленный слот нарушил хронологический порядок
+        return options.sort((a, b) => a.id.localeCompare(b.id));
     };
 
 // Вспомогательная функция для генерации списка END на основе выбранного СТАРТА
@@ -177,11 +188,14 @@ const open = async (data: any, validationContext = { eventCells: [], additionalC
     let dateStr = new DayPilot.Date(rawData.date || rawData.start).toString("yyyy-MM-dd");
     const defaultStartValue = rawData.start ? new DayPilot.Date(rawData.date || rawData.start).toString("HH:mm") : "";
 
-    // Генерируем базовый список разрешенных ячеек
-    const allowedStartTimes = generateAvailableTimeOptions(dateStr, context);
-
     // Логика фильтрации для поля END (выполняется ОДИН раз при создании массива формы)
     let allowedEndTimes: { name: string, id: string }[] = [];
+
+    if (rawData.end && String(rawData.end).includes("T")) {
+        rawData.end = String(rawData.end).split("T")[1].substring(0, 5);
+    }
+
+    const allowedStartTimes = generateAvailableTimeOptions(dateStr, context, isEdit ? defaultStartValue : undefined);
 
     if (defaultStartValue) {
         const [startH, startM] = defaultStartValue.split(':').map(Number);
@@ -296,11 +310,19 @@ const open = async (data: any, validationContext = { eventCells: [], additionalC
     initPhoneMask();
     const options = {
         onShow: (args) => {
-            // Используем setTimeout(..., 0), чтобы гарантировать, что элементы отрисовались в DOM
             setTimeout(() => {
                 // Находим нативные селекты в DOM по их именам
                 const startSelect = args.root.querySelector('select[name="start"]') as HTMLSelectElement | null;
                 const endSelect = args.root.querySelector('select[name="end"]') as HTMLSelectElement | null;
+                let cleanStart = rawData.start ? decodeURIComponent(rawData.start).trim() : "";
+                if (cleanStart.includes("T")) {
+                    cleanStart = cleanStart.split("T")[1].substring(0, 5); // Получим "10:30"
+                } else if (cleanStart.length > 5) {
+                    cleanStart = cleanStarwt.substring(0, 5); // Если пришло "10:30:00", обрезаем до "10:30"
+                }
+                if (startSelect && cleanStart) {
+                    startSelect.value = cleanStart;
+                }
 
                 if (startSelect && endSelect) {
                     startSelect.addEventListener('change', function(e: any) {

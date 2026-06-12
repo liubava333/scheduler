@@ -141,9 +141,9 @@ const config = reactive({
             id: event.data.id,
             name: event.data.name,
             phone: event.data.phone,
-            date: formatDate(event.data.start),
-            start: new DayPilot.Date(event.data.start).toString("HH:mm"),
-            end: new DayPilot.Date(event.data.end).toString("HH:mm"),
+            date: event.data.start,
+            start: event.data.start.toString("HH:mm"),
+            end: event.data.end.toString("HH:mm"),
             note: event.data.note,
             colorCustom: event.data.color
         };
@@ -162,11 +162,6 @@ const addAdditionalCells = (cell, is_enabled) => {
             fetchAdditionalCells()
         }
     });
-}
-
-const formatDate = (date) => {
-    const startDate = new DayPilot.Date(date);
-    return startDate.toString("yyyy/MM/dd");
 }
 
 const addEventListenerClickOnIcon = () => {
