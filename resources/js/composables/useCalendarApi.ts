@@ -126,9 +126,20 @@ export function useCalendarApi(weekRef: any) {
     };
 
     const fetchEventCells = async (weekRef: any) => {
-        const response = await axios.get(route('eventcells.getAll'));
-        eventCells.value = response.data.eventCells; // Это спровоцирует перерисовку
+        try {
+            const response = await axios.get(route('eventcells.getAll'));
+            eventCells.value = response.data.eventCells; // Провоцирует перерисовку vue-стейта
+
+            // Безопасный вызов обновления компонента DayPilot
+            if (weekRef && weekRef.value?.control) {
+                weekRef.value.control.update();
+            }
+        } catch (error) {
+            console.error("Помилка оновлення ячеєк:", error);
+        }
     };
+
+
     // Универсальный метод сохранения ячеек события
     const handleSaveEvent = (formData: any, eventId: number | string) => {
         const cells = defineEventCells(formData.start, formData.end);

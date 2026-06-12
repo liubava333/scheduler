@@ -12,7 +12,7 @@ const dayRef = ref(null);
 const weekRef = ref(null);
 const monthRef = ref(null);
 const {events, form, additionalCells, eventCells, fetchEvents, fetchAdditionalCells, fetchEventCells, fetchWorkingHours,
-    saveWorkingHours, handleEditEvent, handleSaveEvent} = useCalendarApi(weekRef);
+    saveWorkingHours, handleEditEvent, handleSaveEvent, defineEventCells} = useCalendarApi(weekRef);
 const { setupCellRender, getCellStatus, calendarMessage, showMessage } = useCalendarShared();
 const viewType = ref("Week");
 const startDate = ref(DayPilot.Date.today());
@@ -85,6 +85,42 @@ const config = reactive({
             additionalCells: additionalCells.value,
             workingHours: form
         });
+    },
+    onEventResize: (args) => {
+        // 1. Генерируем массив 30-минутных ячеек для нового размера
+        const newCells = defineEventCells(args.newStart, args.newEnd);
+        const currentEventId = args.e.data.id;
+
+        // Ищем, пересекаются ли новые ячейки с чужими занятыми ячейками
+        const isOccupiedByEvent = eventCells.value?.some((cell: any) => {
+            // Проверяем совпадение по времени
+            const timeMatch = newCells.includes(cell.start);
+            // Важно: игнорируем ячейки, которые принадлежат ЭТОМУ ЖЕ событию
+            const isNotOwnCell = Number(cell.event_id) !== Number(currentEventId);
+
+            return timeMatch && isNotOwnCell;
+        });
+        const isBlockedByAdmin = additionalCells.value?.some((cellSetting: any) => {
+            const timeMatch = newCells.includes(cellSetting.start);
+            const isDisabled = cellSetting.is_enabled === 0; // 0 означает, что ячейка закрыта для записи
+            return timeMatch && isDisabled;
+        });
+
+        // Если хоть одна ячейка занята — блокируем ресайз
+        if (isOccupiedByEvent || isBlockedByAdmin) {
+            args.allowed = false;
+            args.preventDefault();
+
+            // Динамический текст ошибки в зависимости от причины блокировки
+            const errorMsg = isOccupiedByEvent
+                ? "Цей час вже зайнятий іншим записом!"
+                : "Цей час заблокований адміністратором!";
+
+            DayPilot.Modal.alert(errorMsg);
+            return;
+        } else {
+            config.onEventMoved(args);
+        }
     },
     onEventMove: (args) => {
         if (args.newStart < new DayPilot.Date()) {
@@ -277,7 +313,8 @@ onMounted(async() => {
                                     :events="events"
                                     @beforeEventRender="config.onBeforeEventRender"
                                     @timeRangeSelected="config.onTimeRangeSelectedAdmin"
-                                    @eventResized="config.onEventMoved"
+                                    @eventResized="config.onEventResize"
+                                    @eventResize="config.onEventResize"
                                     @eventMove="config.onEventMove"
                                     @eventMoved="config.onEventMoved"
                                     ref="dayRef"
@@ -302,7 +339,8 @@ onMounted(async() => {
                                     @beforeEventRender="config.onBeforeEventRender"
                                     @timeRangeSelected="config.onTimeRangeSelectedAdmin"
                                     @beforeCellRender="config.onBeforeCellRender"
-                                    @eventResized="config.onEventMoved"
+                                    @eventResized="config.onEventResize"
+                                    @eventResize="config.onEventResize"
                                     @eventMove="config.onEventMove"
                                     @eventMoved="config.onEventMoved"
                                     ref="weekRef"
@@ -323,7 +361,8 @@ onMounted(async() => {
                                     :events="events"
                                     @beforeEventRender="config.onBeforeEventRender"
                                     @timeRangeSelected="config.onTimeRangeSelectedAdmin"
-                                    @eventResized="config.onEventMoved"
+                                    @eventResized="config.onEventResize"
+                                    @eventResize="config.onEventResize"
                                     @eventMove="config.onEventMove"
                                     @eventMoved="config.onEventMoved"
                                     ref="monthRef"
