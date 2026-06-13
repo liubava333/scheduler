@@ -119,7 +119,18 @@ const config = reactive({
             DayPilot.Modal.alert(errorMsg);
             return;
         } else {
-            config.onEventMoved(args);
+            const movedArgs = {
+                ...args,
+                newStart: {
+                    value: typeof args.newStart === 'string' ? args.newStart : args.newStart.value
+                },
+                newEnd: {
+                    value: typeof args.newEnd === 'string' ? args.newEnd : args.newEnd.value
+                }
+            };
+
+            // Передаем адаптированные аргументы в метод сохранения
+            config.onEventMoved(movedArgs);
         }
     },
     onEventMove: (args) => {
@@ -146,7 +157,8 @@ const config = reactive({
                 onSuccess: () => {
                     router.post(route('eventcells.bulkStore'), { event_id: eventId, cells }, {
                         onSuccess: () => {
-                            fetchEventCells();
+                            fetchEvents();
+                            fetchEventCells(weekRef);
                         }
                     });
                 }

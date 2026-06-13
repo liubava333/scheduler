@@ -185,58 +185,72 @@ const open = async (data: any, validationContext = { eventCells: [], additionalC
         return filteredEndTimes;
     };
 
+    // 1. Извлекаем чистые данные из rawData
+    let rawStartStr = rawData.start ? decodeURIComponent(String(rawData.start)).trim() : "";
+    let rawEndStr = rawData.end ? decodeURIComponent(String(rawData.end)).trim() : "";
+
     let dateStr = new DayPilot.Date(rawData.date || rawData.start).toString("yyyy-MM-dd");
-    const defaultStartValue = rawData.start ? new DayPilot.Date(rawData.date || rawData.start).toString("HH:mm") : "";
 
-    // Логика фильтрации для поля END (выполняется ОДИН раз при создании массива формы)
-    let allowedEndTimes: { name: string, id: string }[] = [];
+    // Вытаскиваем чистое время HH:mm ("10:30")
+    const defaultStartValue = rawStartStr.includes("T") ? rawStartStr.split("T")[1].substring(0, 5) : rawStartStr.substring(0, 5);
+    const defaultEndValue = rawEndStr.includes("T") ? rawEndStr.split("T")[1].substring(0, 5) : rawEndStr.substring(0, 5);
 
-    if (rawData.end && String(rawData.end).includes("T")) {
-        rawData.end = String(rawData.end).split("T")[1].substring(0, 5);
+    // Перезаписываем в rawData очищенные форматы
+    rawData.start = defaultStartValue;
+    rawData.end = defaultEndValue;
+
+    // Генерируем базовый список разрешенных ячеек
+    const allowedStartTimes = generateAvailableTimeOptions(dateStr, context, isEdit ? defaultStartValue : undefined);
+
+    // ВЫЧИСЛЯЕМ СЛОТЫ ТЕКУЩЕГО СОБЫТИЯ НАПРЯМУЮ (Замена defineEventCells)
+    const currentEventTimeSlots: string[] = [];
+    if (isEdit && rawStartStr.includes("T") && rawEndStr.includes("T")) {
+        let current = new Date(rawStartStr);
+        const end = new Date(rawEndStr);
+        while (current < end) {
+            const pad = (n: number) => n.toString().padStart(2, '0');
+            currentEventTimeSlots.push(`${pad(current.getHours())}:${pad(current.getMinutes())}`);
+            current.setMinutes(current.getMinutes() + 30);
+        }
     }
 
-    const allowedStartTimes = generateAvailableTimeOptions(dateStr, context, isEdit ? defaultStartValue : undefined);
+    // Логика фильтрации для поля END
+    let allowedEndTimes: { name: string, id: string }[] = [];
 
     if (defaultStartValue) {
         const [startH, startM] = defaultStartValue.split(':').map(Number);
         const startMinutes = startH * 60 + startM;
 
-        // Генерируем временную шкалу на 24 часа для поиска возможных точек завершения
         const allDaySlots: string[] = [];
         for (let h = 0; h < 24; h++) {
             for (let m of ['00', '30']) {
                 allDaySlots.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
             }
         }
-        // Добавляем финальную точку суток
         allDaySlots.push("24:00");
 
-        // Запускаем проверку слотов, идущих строго ПОСЛЕ выбранного старта
         for (const slot of allDaySlots) {
             const [endH, endM] = slot.split(':').map(Number);
             const endMinutes = endH * 60 + endM;
 
             if (endMinutes <= startMinutes) continue;
 
-            // Главное правило: проверяем ячейку, которая находится ДО этого времени окончания.
-            // Если рассматриваем End = 09:30, проверяем слот старта 09:00.
-            // Если рассматриваем End = 10:00, проверяем слот 09:30. Если 09:30 недоступен — прерываем цикл.
             const prevSlotMinutes = endMinutes - 30;
             const prevH = Math.floor(prevSlotMinutes / 60);
             const prevM = prevSlotMinutes % 60;
             const prevSlotStr = `${String(prevH).padStart(2, '0')}:${String(prevM).padStart(2, '0')}`;
 
-            // Если предыдущий 30-минутный шаг свободен — этот End валиден, добавляем его
-            if (allowedStartTimes.some(o => o.id === prevSlotStr)) {
+            // Проверяем: либо слот свободен, либо он принадлежит текущему редактируемому событию
+            const isFreeSlot = allowedStartTimes.some(o => o.id === prevSlotStr);
+            const isOwnCurrentSlot = currentEventTimeSlots.includes(prevSlotStr);
+
+            if (isFreeSlot || isOwnCurrentSlot) {
                 allowedEndTimes.push({ name: slot, id: slot });
             } else {
-                // Как только наткнулись на недоступную ячейку (например 09:30 занято) —
-                // мы завершаем добавление времени. Дальнейшее время (10:00, 10:30) добавлено НЕ БУДЕТ.
-                break;
+                break; // Наткнулись на чужой блок — прерываем добавление
             }
         }
     } else {
-        // На случай, если дефолтного старта нет, отдаем весь список (безопасный фолбек)
         allowedEndTimes = [...allowedStartTimes];
     }
 
@@ -318,10 +332,13 @@ const open = async (data: any, validationContext = { eventCells: [], additionalC
                 if (cleanStart.includes("T")) {
                     cleanStart = cleanStart.split("T")[1].substring(0, 5); // Получим "10:30"
                 } else if (cleanStart.length > 5) {
-                    cleanStart = cleanStarwt.substring(0, 5); // Если пришло "10:30:00", обрезаем до "10:30"
+                    cleanStart = cleanStart.substring(0, 5); // Если пришло "10:30:00", обрезаем до "10:30"
                 }
                 if (startSelect && cleanStart) {
                     startSelect.value = cleanStart;
+                }
+                if (endSelect && defaultEndValue) {
+                    endSelect.value = defaultEndValue;
                 }
 
                 if (startSelect && endSelect) {
