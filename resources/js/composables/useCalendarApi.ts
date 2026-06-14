@@ -4,7 +4,7 @@ import { useForm, router, usePage } from '@inertiajs/vue3';
 
 const page = usePage();
 const events = ref([]);
-export function useCalendarApi(weekRef: any) {
+export function useCalendarApi(weekRef: any, dayRef: any) {
     const additionalCells = ref([]);
     const eventCells = ref([]);
     // Объект формы для настроек времени
@@ -15,7 +15,7 @@ export function useCalendarApi(weekRef: any) {
         weekendEnd: '15:00',
     });
     // 1. Получение настроек времени (только для админки или инициализации)
-    const fetchWorkingHours = async (weekRef: any) => {
+    const fetchWorkingHours = async (weekRef: any, dayRef: any) => {
         try {
             const response = await axios.get(route('/api/dashboard.getHours'));
             const hours = response.data?.[0]; // Берем первую запись
@@ -25,16 +25,14 @@ export function useCalendarApi(weekRef: any) {
                 form.weekendStart = hours.weekend_start;
                 form.weekendEnd = hours.weekend_end;
 
-                if (weekRef.value?.control) {
-                    weekRef.value.control.update();
-                }
+                [weekRef, dayRef].forEach(ref => ref?.value?.control?.update());
             }
         } catch (error) {
             console.error('Ошибка загрузки часов:', error);
         }
     };
 
-    const saveWorkingHours = (weekRef: any) => {
+    const saveWorkingHours = (weekRef: any, dayRef: any) => {
         // Очищаем старые ошибки перед новой проверкой
         form.clearErrors();
 
@@ -67,10 +65,7 @@ export function useCalendarApi(weekRef: any) {
         form.post(route('dashboard.store'), {
             preserveScroll: true,
             onSuccess: () => {
-                if (weekRef.value?.control) {
-                    weekRef.value?.control?.update();
-                }
-
+                [weekRef, dayRef].forEach(ref => ref?.value?.control?.update());
                 console.log('График успешно сохранен');
             },
         });
@@ -93,7 +88,7 @@ export function useCalendarApi(weekRef: any) {
             console.error("Ошибка загрузки событий:", error);
         }
     };
-    const fetchAdditionalCells = async (weekRef: any, isAdmin: boolean = false) => {
+    const fetchAdditionalCells = async (weekRef: any, dayRef: any, isAdmin: boolean = false) => {
         try {
             const response = await axios.get(route('additional.getAll'));
             const data = response.data.additionalCells;
@@ -116,73 +111,90 @@ export function useCalendarApi(weekRef: any) {
                     additionalCells.value = cleanData;
                 }
 
-                if (weekRef.value?.control) {
-                    weekRef.value.control.update();
-                }
+                [weekRef, dayRef].forEach(ref => ref?.value?.control?.update());
             }
         } catch (error) {
             console.error('Ошибка загрузки ячеек:', error);
         }
     };
 
-    const fetchEventCells = async (weekRef: any) => {
+    const fetchEventCells = async (weekRef: any, dayRef: any) => {
         try {
             const response = await axios.get(route('eventcells.getAll'));
             eventCells.value = response.data.eventCells; // Провоцирует перерисовку vue-стейта
 
             // Безопасный вызов обновления компонента DayPilot
-            if (weekRef && weekRef.value?.control) {
-                weekRef.value.control.update();
-            }
+            [weekRef, dayRef].forEach(ref => ref?.value?.control?.update());
         } catch (error) {
             console.error("Помилка оновлення ячеєк:", error);
         }
     };
 
-
-    // Универсальный метод сохранения ячеек события
     const handleSaveEvent = (formData: any, eventId: number | string) => {
         const cells = defineEventCells(formData.start, formData.end);
-        router.post(route('eventcells.bulkStore'), {
-            event_id: eventId,
-            cells: cells
-        }, {
-            preserveState: true,
-            onSuccess: async () => {
-                console.log('The event cells have been successfully saved.');
-                await fetchEvents();
-                if (typeof fetchEventCells === 'function') {
-                    await fetchEventCells();
-                }
 
-                if (weekRef?.value?.control) {
-                    weekRef.value.control.update();
-                }
+        router.post(
+            route('eventcells.bulkStore'),
+            {
+                event_id: eventId,
+                cells: cells
             },
-            onError: (err) => console.error("Error saving event cells:", err)
-        });
-    };
+            {
+                preserveState: true,
+                onSuccess: (page) => {
+                    console.log('The event cells have been successfully saved.', page);
 
-    const handleEditEvent = (oldFormData, formData, eventId) => {
-        const cells = defineEventCells(formData.start, formData.end);
-        router.post(route('eventcells.bulkStore'),  {event_id: eventId, cells: cells}, {
-            preserveState: true,
-            onSuccess: async () => {
-                console.log('success edited Event');
-                await fetchEvents();
-                if (typeof fetchEventCells === 'function') {
-                    await fetchEventCells(weekRef);
-                }
-                // Используем weekRef из замыкания useCalendarApi
-                if (weekRef?.value?.control) {
-                    weekRef.value.control.update();
-                    console.log('Календарь обновлен успешно');
-                } else {
-                    console.error('Ошибка: calendarRef.value.control не найден', weekRef);
+                    // 1. Вызываем функции параллельно (они обновят ref-переменные в фоне)
+                    fetchEvents();
+
+                    if (typeof fetchEventCells === 'function') {
+                        fetchEventCells(weekRef, dayRef);
+                    }
+
+                    // 2. Даем Vue мгновение на применение реактивности и обновляем визуальную часть календарей
+                    setTimeout(() => {
+                        [weekRef, dayRef].forEach(ref => ref?.value?.control?.update());
+                    }, 0);
+                },
+                onError: (errors) => {
+                    console.error("Error saving event cells:", errors);
                 }
             }
-        });
-    }
+        );
+    };
+
+    const handleEditEvent = (oldFormData: any, formData: any, eventId: number | string) => {
+        const cells = defineEventCells(formData.start, formData.end);
+
+        router.post(
+            route('eventcells.bulkStore'),
+            { event_id: eventId, cells: cells },
+            {
+                preserveState: true,
+                onSuccess: () => {
+                    console.log('success edited Event');
+
+                    // Просто вызываем функции параллельно
+                    fetchEvents();
+                    if (typeof fetchEventCells === 'function') {
+                        fetchEventCells(weekRef, dayRef);
+                    }
+
+                    // Даем 0 миллисекунд для завершения микротасок Vue и обновляем календари
+                    setTimeout(() => {
+                        [weekRef, dayRef].forEach(ref => ref?.value?.control?.update());
+                        console.log('Календари обновлены успешно');
+                    }, 0);
+                },
+                onError: (errors) => {
+                    console.error("Ошибка при сохранении ячеек события:", errors);
+                }
+            }
+        );
+    };
+
+
+
     const defineEventCells = (startCell, endCell) => {
         const cellArray = [];
 
@@ -216,9 +228,9 @@ export function useCalendarApi(weekRef: any) {
         fetchEvents,
         loadEventsAsync,
         fetchWorkingHours,
-        saveWorkingHours: () => saveWorkingHours(weekRef),
-        fetchAdditionalCells: () => fetchAdditionalCells(weekRef),
-        fetchEventCells: () => fetchEventCells(weekRef), // пробрасываем реф
+        saveWorkingHours: () => saveWorkingHours(weekRef, dayRef),
+        fetchAdditionalCells: () => fetchAdditionalCells(weekRef, dayRef),
+        fetchEventCells: () => fetchEventCells(weekRef, dayRef), // пробрасываем реф
         handleSaveEvent,
         handleEditEvent,
         defineEventCells

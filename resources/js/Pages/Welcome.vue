@@ -14,10 +14,11 @@ const events = ref([]);
 import { useCalendarApi } from '@/composables/useCalendarApi';
 const page = usePage();
 const weekRef = ref(null);
+const dayRef = ref(null);
 const eventModalRef = ref(null);
 const modalData = ref({});
 const isModalOpen = ref(false);
-const {form, additionalCells, eventCells, fetchAdditionalCells,handleSaveEvent,handleEditEvent, fetchEventCells, fetchWorkingHours } = useCalendarApi(weekRef);
+const {form, additionalCells, eventCells, fetchAdditionalCells,handleSaveEvent,handleEditEvent, fetchEventCells, fetchWorkingHours } = useCalendarApi(weekRef, dayRef);
 defineProps<{
     canLogin?: boolean;
     canRegister?: boolean;
@@ -105,9 +106,7 @@ const getAdditionalCellsPortal = async () => {
                     start: cell.start.replace(" ", "T") // нормализуем формат для DayPilot
                 }));
 
-                if (weekRef.value?.control) {
-                    weekRef.value.control.update();
-                }
+                [weekRef, dayRef].forEach(ref => ref?.value?.control?.update());
                 console.log('Portal: ячейки загружены');
             }
         })
@@ -132,16 +131,14 @@ onMounted(async() => {
     // Запускаем все запросы одновременно и ждем их завершения
     try {
         await Promise.all([
-            fetchWorkingHours(weekRef),
-            fetchEventCells(weekRef),
+            fetchWorkingHours(weekRef, dayRef),
+            fetchEventCells(weekRef, dayRef),
             getAdditionalCellsPortal(),
-            fetchAdditionalCells(weekRef, false)
+            fetchAdditionalCells(weekRef, dayRef, false)
         ]);
 
         // Когда все данные в REF-ах, принудительно обновляем календарь
-        if (weekRef.value?.control) {
-            weekRef.value.control.update();
-        }
+        [weekRef, dayRef].forEach(ref => ref?.value?.control?.update());
     } catch (e) {
         console.error("Ошибка при инициализации данных календаря", e);
     }

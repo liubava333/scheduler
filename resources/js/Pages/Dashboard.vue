@@ -12,7 +12,7 @@ const dayRef = ref(null);
 const weekRef = ref(null);
 const monthRef = ref(null);
 const {events, form, additionalCells, eventCells, fetchEvents, fetchAdditionalCells, fetchEventCells, fetchWorkingHours,
-    saveWorkingHours, handleEditEvent, handleSaveEvent, defineEventCells} = useCalendarApi(weekRef);
+    saveWorkingHours, handleEditEvent, handleSaveEvent, defineEventCells} = useCalendarApi(weekRef, dayRef);
 const { setupCellRender, getCellStatus, calendarMessage, showMessage } = useCalendarShared();
 const viewType = ref("Week");
 const startDate = ref(DayPilot.Date.today());
@@ -158,7 +158,7 @@ const config = reactive({
                     router.post(route('eventcells.bulkStore'), { event_id: eventId, cells }, {
                         onSuccess: () => {
                             fetchEvents();
-                            fetchEventCells(weekRef);
+                            fetchEventCells(weekRef, dayRef);
                         }
                     });
                 }
@@ -207,7 +207,7 @@ const config = reactive({
 const addAdditionalCells = (cell, is_enabled) => {
     router.post(route('additional.store'), { cell, is_enabled }, {
         onSuccess: () =>  {
-            fetchAdditionalCells()
+            fetchAdditionalCells(weekRef, dayRef, true)
         }
     });
 }
@@ -228,17 +228,15 @@ onMounted(async() => {
     try {
         await Promise.all([
             // Загружаем всё одной пачкой
-            fetchWorkingHours(weekRef),
+            fetchWorkingHours(weekRef, dayRef),
             fetchEvents(),
             addEventListenerClickOnIcon(),
-            fetchAdditionalCells(weekRef, true), // true = режим админа
-            fetchEventCells(weekRef),
+            fetchAdditionalCells(weekRef, dayRef, true), // true = режим админа
+            fetchEventCells(weekRef, dayRef),
         ]);
 
         // Когда все данные в REF-ах, принудительно обновляем календарь
-        if (weekRef.value?.control) {
-            weekRef.value.control.update();
-        }
+        [weekRef, dayRef].forEach(ref => ref?.value?.control?.update());
     } catch (e) {
         console.error("Ошибка при инициализации данных календаря", e);
     }
@@ -325,6 +323,7 @@ onMounted(async() => {
                                     :events="events"
                                     @beforeEventRender="config.onBeforeEventRender"
                                     @timeRangeSelected="config.onTimeRangeSelectedAdmin"
+                                    @beforeCellRender="config.onBeforeCellRender"
                                     @eventResized="config.onEventResize"
                                     @eventResize="config.onEventResize"
                                     @eventMove="config.onEventMove"

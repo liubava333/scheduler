@@ -98,7 +98,8 @@ const open = async (data: any, validationContext = { eventCells: [], additionalC
             </div>
         </div>`;
 
-    const generateAvailableTimeOptions = (selectedDateStr: string, context: any, currentSlot?: string) => {
+    const generateAvailableTimeOptions = (selectedDateStr: string, context: any, currentSlot?: string, id) => {
+
         const options: { name: string, id: string }[] = [];
         const now = new Date();
 
@@ -137,7 +138,13 @@ const open = async (data: any, validationContext = { eventCells: [], additionalC
                     if (!isWorkingSlot) continue;
                 }
 
-                const isOccupied = context.eventCells?.some((e: any) => e.start === fullDateTimeStr);
+                const isOccupied = context.eventCells?.some((e: any) => {
+                    if (e.event_id == id) {
+                        return;
+                    }
+                    return e.start === fullDateTimeStr;
+                });
+
                 if (isOccupied) continue;
 
                 options.push({ name: timeStr, id: timeStr });
@@ -200,9 +207,8 @@ const open = async (data: any, validationContext = { eventCells: [], additionalC
     rawData.end = defaultEndValue;
 
     // Генерируем базовый список разрешенных ячеек
-    const allowedStartTimes = generateAvailableTimeOptions(dateStr, context, isEdit ? defaultStartValue : undefined);
+    const allowedStartTimes = generateAvailableTimeOptions(dateStr, context, isEdit ? defaultStartValue : undefined, rawData.id);
 
-    // ВЫЧИСЛЯЕМ СЛОТЫ ТЕКУЩЕГО СОБЫТИЯ НАПРЯМУЮ (Замена defineEventCells)
     const currentEventTimeSlots: string[] = [];
     if (isEdit && rawStartStr.includes("T") && rawEndStr.includes("T")) {
         let current = new Date(rawStartStr);
