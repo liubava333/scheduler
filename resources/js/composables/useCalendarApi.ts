@@ -131,8 +131,7 @@ export function useCalendarApi(weekRef: any, dayRef: any) {
     };
 
     const handleSaveEvent = (formData: any, eventId: number | string) => {
-        const cells = defineEventCells(formData.start, formData.end);
-
+        const cells = defineEventCells(formData.start, formData.end, formData.date);
         router.post(
             route('eventcells.bulkStore'),
             {
@@ -164,8 +163,8 @@ export function useCalendarApi(weekRef: any, dayRef: any) {
     };
 
     const handleEditEvent = (oldFormData: any, formData: any, eventId: number | string) => {
-        const cells = defineEventCells(formData.start, formData.end);
 
+        const cells = defineEventCells(formData.start, formData.end, formData.date);
         router.post(
             route('eventcells.bulkStore'),
             { event_id: eventId, cells: cells },
@@ -193,33 +192,43 @@ export function useCalendarApi(weekRef: any, dayRef: any) {
         );
     };
 
+    const defineEventCells = (startCell, endCell, targetDate) => {
+        // Функция для извлечения времени (HH:mm:ss) из исходной строки
+        const getTimeString = (dateInput) => {
+            const d = new Date(dateInput);
+            const pad = (n) => n.toString().padStart(2, '0');
+            return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+        };
 
+        // Создаем базовую дату (YYYY-MM-DD) из параметра targetDate
+        const baseDate = new Date(targetDate);
+        const pad = (n) => n.toString().padStart(2, '0');
+        const datePart = `${baseDate.getFullYear()}-${pad(baseDate.getMonth() + 1)}-${pad(baseDate.getDate())}`;
 
-    const defineEventCells = (startCell, endCell) => {
+        // Собираем новые объекты Date с нужной датой и оригинальным временем
+        let current = new Date(`${datePart}T${getTimeString(startCell)}`);
+        const end = new Date(`${datePart}T${getTimeString(endCell)}`);
+
         const cellArray = [];
 
-        let current = new Date(startCell);
-        const end = new Date(endCell);
-        // Функция для форматирования Date в "YYYY-MM-DDTHH:mm:ss"
+        // Функция для форматирования итогового результата
         const formatDateTime = (date) => {
-            const pad = (n) => n.toString().padStart(2, '0');
             return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
         };
 
         const diffInMinutes = (end - current) / (1000 * 60);
         if (diffInMinutes <= 30) {
-            return [formatDateTime(current)]; // Возвращаем только start
+            return [formatDateTime(current)];
         }
 
-        // Цикл: пока текущее время меньше конечного
         while (current < end) {
             cellArray.push(formatDateTime(current));
-
             current.setMinutes(current.getMinutes() + 30);
         }
 
         return cellArray;
-    }
+    };
+
     return {
         events,
         form,

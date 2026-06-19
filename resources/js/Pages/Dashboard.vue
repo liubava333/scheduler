@@ -152,7 +152,7 @@ const config = reactive({
         };
 
         const syncCells = (eventId, start, end) => {
-            const cells = defineEventCells(start, end);
+            const cells = defineEventCells(start, end, start);
             router.delete(route('eventcells.destroy', { eventId }), {
                 onSuccess: () => {
                     router.post(route('eventcells.bulkStore'), { event_id: eventId, cells }, {

@@ -31,7 +31,7 @@ const COLORS = [
     { id: "#7FFFD4", name: "Аквамарин", color: "aquamarine" },
     { id: "#FF00FF", name: "Фуксія", color: "fuchsia" },
     { id: "#FF1493", name: "Рожевий", color: "deepPink" },
-    { id: "#808080", name: "Сірий", color: "gray" },
+    { id: "#4b4848", name: "Сірий", color: "gray" },
 ];
 
 const handleGlobalClick = (e: MouseEvent) => {
@@ -98,10 +98,11 @@ const open = async (data: any, validationContext = { eventCells: [], additionalC
             </div>
         </div>`;
 
-    const generateAvailableTimeOptions = (selectedDateStr: string, context: any, currentSlot?: string, id) => {
-
+    const generateAvailableTimeOptions = (selectedDateStr: string, context: any, currentSlot?: string, id?: any, isDateChanged = false) => {
         const options: { name: string, id: string }[] = [];
         const now = new Date();
+        const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const currentComputerMinutes = now.getHours() * 60 + now.getMinutes();
 
         const selectedDate = new Date(selectedDateStr);
         const dayOfWeek = selectedDate.getDay();
@@ -115,17 +116,20 @@ const open = async (data: any, validationContext = { eventCells: [], additionalC
             for (let min of ['00', '30']) {
                 const timeStr = `${String(hour).padStart(2, '0')}:${min}`;
                 const fullDateTimeStr = `${selectedDateStr}T${timeStr}:00`;
-                const checkDate = new Date(fullDateTimeStr);
 
-                // Если это текущее редактируемое время,
-                // мы пропускаем любые проверки на занятость/прошлое время и сразу добавляем его
-                if (currentSlot && timeStr === currentSlot) {
+                const [slotH, slotM] = timeStr.split(':').map(Number);
+                const slotMinutes = slotH * 60 + slotM;
+
+                if (!isDateChanged && currentSlot && timeStr === currentSlot) {
                     options.push({ name: timeStr, id: timeStr });
                     continue;
                 }
 
-                // Ниже идет ваша стандартная логика проверок для остальных слотов
-                if (checkDate < now) continue;
+                // Жесткое отсечение прошлого для сегодняшнего дня по минутам (без багов TZ)
+                if (selectedDateStr === todayStr && slotMinutes < currentComputerMinutes) {
+                    continue;
+                }
+
                 if (!startTime || !endTime) continue;
 
                 const isWorkingSlot = timeStr >= startTime && timeStr < endTime;
@@ -139,9 +143,7 @@ const open = async (data: any, validationContext = { eventCells: [], additionalC
                 }
 
                 const isOccupied = context.eventCells?.some((e: any) => {
-                    if (e.event_id == id) {
-                        return;
-                    }
+                    if (e.event_id == id) { return false; }
                     return e.start === fullDateTimeStr;
                 });
 
@@ -150,18 +152,23 @@ const open = async (data: any, validationContext = { eventCells: [], additionalC
                 options.push({ name: timeStr, id: timeStr });
             }
         }
-
-        // Сортируем массив, если принудительно добавленный слот нарушил хронологический порядок
         return options.sort((a, b) => a.id.localeCompare(b.id));
     };
 
-// Вспомогательная функция для генерации списка END на основе выбранного СТАРТА
-// Выносим её отдельно, чтобы вызывать и при инициализации, и при изменении (onchange)
-    const getFilteredEndTimes = (startTimeStr: string, allowedStartTimes: { id: string }[]) => {
-        let filteredEndTimes: { name: string, id: string }[] = [];
-        if (!startTimeStr) return allowedStartTimes;
+    const getFilteredEndTimes = (
+        startValue: string,
+        allowedStartTimes: { id: string, name: string }[],
+        currentEventTimeSlots: string[],
+        selectedDateStr: string
+    ) => {
+        let allowedEndTimes: { name: string, id: string }[] = [];
+        if (!startValue) return allowedEndTimes;
 
-        const [startH, startM] = startTimeStr.split(':').map(Number);
+        const now = new Date();
+        const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const currentComputerMinutes = now.getHours() * 60 + now.getMinutes();
+
+        const [startH, startM] = startValue.split(':').map(Number);
         const startMinutes = startH * 60 + startM;
 
         const allDaySlots: string[] = [];
@@ -178,230 +185,313 @@ const open = async (data: any, validationContext = { eventCells: [], additionalC
 
             if (endMinutes <= startMinutes) continue;
 
-            const prevSlotMinutes = endMinutes - 30;
-            const prevH = Math.floor(prevSlotMinutes / 60);
-            const prevM = prevSlotMinutes % 60;
-            const prevSlotStr = `${String(prevH).padStart(2, '0')}:${String(prevM).padStart(2, '0')}`;
-
-            if (allowedStartTimes.some(o => o.id === prevSlotStr)) {
-                filteredEndTimes.push({ name: slot, id: slot });
-            } else {
-                break; // Наткнулись на недоступную ячейку — прерываем цепочку
+            // Фильтр прошлого времени для Енда
+            if (selectedDateStr === todayStr && endMinutes <= currentComputerMinutes) {
+                continue;
             }
-        }
-        return filteredEndTimes;
-    };
-
-    // 1. Извлекаем чистые данные из rawData
-    let rawStartStr = rawData.start ? decodeURIComponent(String(rawData.start)).trim() : "";
-    let rawEndStr = rawData.end ? decodeURIComponent(String(rawData.end)).trim() : "";
-
-    let dateStr = new DayPilot.Date(rawData.date || rawData.start).toString("yyyy-MM-dd");
-
-    // Вытаскиваем чистое время HH:mm ("10:30")
-    const defaultStartValue = rawStartStr.includes("T") ? rawStartStr.split("T")[1].substring(0, 5) : rawStartStr.substring(0, 5);
-    const defaultEndValue = rawEndStr.includes("T") ? rawEndStr.split("T")[1].substring(0, 5) : rawEndStr.substring(0, 5);
-
-    // Перезаписываем в rawData очищенные форматы
-    rawData.start = defaultStartValue;
-    rawData.end = defaultEndValue;
-
-    // Генерируем базовый список разрешенных ячеек
-    const allowedStartTimes = generateAvailableTimeOptions(dateStr, context, isEdit ? defaultStartValue : undefined, rawData.id);
-
-    const currentEventTimeSlots: string[] = [];
-    if (isEdit && rawStartStr.includes("T") && rawEndStr.includes("T")) {
-        let current = new Date(rawStartStr);
-        const end = new Date(rawEndStr);
-        while (current < end) {
-            const pad = (n: number) => n.toString().padStart(2, '0');
-            currentEventTimeSlots.push(`${pad(current.getHours())}:${pad(current.getMinutes())}`);
-            current.setMinutes(current.getMinutes() + 30);
-        }
-    }
-
-    // Логика фильтрации для поля END
-    let allowedEndTimes: { name: string, id: string }[] = [];
-
-    if (defaultStartValue) {
-        const [startH, startM] = defaultStartValue.split(':').map(Number);
-        const startMinutes = startH * 60 + startM;
-
-        const allDaySlots: string[] = [];
-        for (let h = 0; h < 24; h++) {
-            for (let m of ['00', '30']) {
-                allDaySlots.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
-            }
-        }
-        allDaySlots.push("24:00");
-
-        for (const slot of allDaySlots) {
-            const [endH, endM] = slot.split(':').map(Number);
-            const endMinutes = endH * 60 + endM;
-
-            if (endMinutes <= startMinutes) continue;
 
             const prevSlotMinutes = endMinutes - 30;
             const prevH = Math.floor(prevSlotMinutes / 60);
             const prevM = prevSlotMinutes % 60;
             const prevSlotStr = `${String(prevH).padStart(2, '0')}:${String(prevM).padStart(2, '0')}`;
 
-            // Проверяем: либо слот свободен, либо он принадлежит текущему редактируемому событию
             const isFreeSlot = allowedStartTimes.some(o => o.id === prevSlotStr);
-            const isOwnCurrentSlot = currentEventTimeSlots.includes(prevSlotStr);
+            const isOwnCurrentSlot = currentEventTimeSlots && currentEventTimeSlots.includes(prevSlotStr);
 
+            // ИСПРАВЛЕНИЕ: Заменено break на continue, чтобы не ломать селект при занятых слотах
             if (isFreeSlot || isOwnCurrentSlot) {
                 allowedEndTimes.push({ name: slot, id: slot });
             } else {
-                break; // Наткнулись на чужой блок — прерываем добавление
+                continue;
             }
         }
-    } else {
-        allowedEndTimes = [...allowedStartTimes];
-    }
+        return allowedEndTimes;
+    };
 
-    // 1. Создаем внешнюю переменную для перехвата данных (замыкание)
-    let externalFinalResult: any = null;
-    const formModal = [
-        { name: "Ім'я", id: "name", type: "text",
-            validate: (args) => {
-                const value = args.value ? args.value.trim() : "";
+    const getFormModalConfig = (targetDate, rawData, isEdit, defaultStartValue, context, currentEventTimeSlots) => {
+        const allowedStartTimes = generateAvailableTimeOptions(targetDate, context, isEdit ? defaultStartValue : undefined, rawData.id);
+        let allowedEndTimes: { name: string, id: string }[] = [];
 
-                if (!value) {
-                    args.valid = false; // Блокируем отправку формы
-                    args.message = `Полe "Ім'я" є обов'язковим для заповнення!`; // Выводим ошибку
-                }
-            }
-        },
-        { name: "Телефон", id: "phone", type: "text",
-            validate: (args) => {
-                const value = args.value ? args.value.replace(/\D/g, "") : ""; // Удаляем все не-цифры
+        if (defaultStartValue) {
+            allowedEndTimes = getFilteredEndTimes(defaultStartValue, allowedStartTimes, currentEventTimeSlots, targetDate);
+        } else {
+            allowedEndTimes = [...allowedStartTimes];
+        }
 
-                if (!value) {
-                    args.valid = false;
-                    args.message = "Поле \"Номер телефону\" є обов'язковим для заповнення!";
-                } else if (value.length < 12) { // Например, проверка на минимальную длину номера
-                    args.valid = false;
-                    args.message = "Введіть правильний номер телефону!";
-                }
-            }
-        },
-        { name: "Дата", id: "date", type: "date", disabled: !isEdit },
-        { name: "Початок", id: "start",  type: "select", options: allowedStartTimes },
-        { name: "Закінчення", id: "end",  type: "select", options: allowedEndTimes,
-            validate: (args) => {
-                // Жёстко вытаскиваем элемент из модального окна по его ID/Name
-                const endSelectElement = document.querySelector('select[name="end"]') as HTMLSelectElement | null;
-                // Если DayPilot потерял значение, но в DOM-селекте оно физически выбрано — восстанавливаем его в стейт
-                if (endSelectElement) {
-                    args.result.end = endSelectElement.value;
-                    // Перезаписываем локальную переменную для выполнения валидации ниже
-                    var effectiveEndValue = endSelectElement.value;
-                } else {
-                    var effectiveEndValue = args.value;
-                }
-                const startValue = args.result.start;
-                const endValue = effectiveEndValue;
-                if (startValue && endValue) {
-                    const [startH, startM] = startValue.split(':').map(Number);
-                    const [endH, endM] = endValue.split(':').map(Number);
-
-                    const startMinutes = startH * 60 + startM;
-                    const endMinutes = endH * 60 + endM;
-
-                    if (endMinutes < startMinutes + 30) {
-                        args.valid = false; // Блокируем отправку
-                        args.message = "Час закінчення має бути мінімум на 30 хвилин більшим за початок!";
+        return [
+            { name: "Ім'я", id: "name", type: "text",
+                validate: (args) => {
+                    const value = args.value ? args.value.trim() : "";
+                    if (!value) {
+                        args.valid = false;
+                        args.message = `Полe "Ім'я" є обов'язковим для заповнення!`;
                     }
                 }
-                args.value = endValue
-                args.result.end = endValue;
-                // Собираем финальный объект результата со всеми заполненными полями формы
-                externalFinalResult = {
-                    ...args.result,
-                    end: endValue // Принудительно вшиваем корректный End
-                };
-            }
-        },
-        { name: "Note", id: "note", type: "textarea", height: 50 },
-        { name: "Color", id: "colorCustom", html: colorDropdownHtml }
-    ];
+            },
+            { name: "Телефон", id: "phone", type: "text",
+                validate: (args) => {
+                    const value = args.value ? args.value.replace(/\D/g, "") : "";
+                    if (!value) {
+                        args.valid = false;
+                        args.message = "Поле \"Номер телефону\" є обов'язковим для заповнення!";
+                    } else if (value.length < 12) {
+                        args.valid = false;
+                        args.message = "Введіть правильний номер телефону!";
+                    }
+                }
+            },
+            { name: "Дата", id: "date", type: "date",
+                validate: (args) => {
+                    if (!args.value) {
+                        args.valid = false;
+                        args.message = "Поле \"Дата\" є обов'язковим для заповнення!";
+                        return;
+                    }
+                    const selectedDateStr = new DayPilot.Date(args.value).toString("yyyy-MM-dd");
+                    const now = new Date();
+                    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+                    if (selectedDateStr < todayStr) {
+                        args.valid = false;
+                        args.message = "Не можна обирати дату з минулого! Виберіть коректний день.";
+                    }
+                }
+            },
+            { name: "Початок", id: "start", type: "select", options: allowedStartTimes, value: defaultStartValue },
+            { name: "Закінчення", id: "end", type: "select", options: allowedEndTimes, value: defaultEndValue,
+                validate: (args) => {
+                    const endSelectElement = document.querySelector('select[name="end"]') as HTMLSelectElement | null;
+                    let effectiveEndValue = endSelectElement ? endSelectElement.value : args.value;
+                    const startValue = args.result.start;
+                    const endValue = effectiveEndValue;
+                    if (startValue && endValue) {
+                        const [startH, startM] = startValue.split(':').map(Number);
+                        const [endH, endM] = endValue.split(':').map(Number);
+                        if ((endH * 60 + endM) < (startH * 60 + startM + 30)) {
+                            args.valid = false;
+                            args.message = "Час закінчення має быть мінімум на 30 хвилин більшим за початок!";
+                        }
+                    }
+                    args.value = endValue;
+                    args.result.end = endValue;
+                    externalFinalResult = { ...args.result, end: endValue };
+                }
+            },
+            { name: "Note", id: "note", type: "textarea", height: 50 },
+            { name: "Color", id: "colorCustom", html: colorDropdownHtml }
+        ];
+    };
+
+    // ГЛОБАЛЬНЫЕ ТРЕКЕРЫ
+    let externalFinalResult: any = null;
+    let formModal: any[] = [];
+    let lastProcessedDate = "";
+    let globalActiveSlots: string[] = [];
 
     initPhoneMask();
+
+    const refreshTimeSelects = (modalRoot: HTMLElement, selectedDateStr: string, updatedStartOptions: any[]) => {
+        const allSelects = modalRoot.querySelectorAll("select");
+        const startSelect = allSelects[0] as HTMLSelectElement | null;
+        const endSelect = allSelects[1] as HTMLSelectElement | null;
+
+        // Шаг А: Быстрая перерисовка СТАРТА через шаблонизатор строк
+        if (startSelect) {
+            const prevStart = startSelect.value;
+            startSelect.innerHTML = updatedStartOptions.map(opt => `<option value="${opt.id}">${opt.name}</option>`).join('');
+
+            defaultStartValue = updatedStartOptions.some(o => o.id === prevStart) ? prevStart : (updatedStartOptions[0]?.id || "09:00");
+            startSelect.value = defaultStartValue;
+        }
+
+        // Шаг Б: Быстрая перерисовка ЭНДА и математический расчет +30 минут
+        if (endSelect) {
+            const newEndOptions = getFilteredEndTimes(defaultStartValue, updatedStartOptions, globalActiveSlots, selectedDateStr);
+            endSelect.innerHTML = newEndOptions.map(opt => `<option value="${opt.id}">${opt.name}</option>`).join('');
+            const [startH, startM] = defaultStartValue.split(':').map(Number);
+            const targetMin = startH * 60 + startM + 30;
+            const plus30Str = `${String(Math.floor(targetMin / 60)).padStart(2, '0')}:${String(targetMin % 60).padStart(2, '0')}`;
+
+            if (newEndOptions.some(o => o.id === plus30Str)) {
+                defaultEndValue = plus30Str;
+            } else if (newEndOptions.length > 0) {
+                defaultEndValue = newEndOptions[0].id;
+            } else {
+                defaultEndValue = plus30Str;
+                endSelect.innerHTML += `<option value="${plus30Str}">${plus30Str}</option>`;
+            }
+
+            endSelect.value = defaultEndValue;
+        }
+    // Синхронизируем структуру массивов в памяти DayPilot
+        const startField = formModal.find(item => item.id === "start");
+        if (startField) {
+            startField.options = updatedStartOptions;
+        }
+
+        const endField = formModal.find(item => item.id === "end");
+        if (endField) {
+            endField.options = formModal.find(item => item.id === "end")?.options || [];
+        }
+    }
+
     const options = {
+        onChange: async (args) => {
+            if (!args || !args.result || !args.result.date) return;
+
+            const currentSelectedDate = args.result.date.split("T")[0];
+            const todayStr = new Date().toISOString().split("T")[0];
+            const modalRoot = args.root || document.querySelector(".modal_default_main") || document.body;
+
+            // Если выбрана старая дата — очищаем списки
+            if (currentSelectedDate < todayStr) {
+                lastProcessedDate = currentSelectedDate;
+                const allSelects = modalRoot.querySelectorAll("select");
+
+                if (allSelects[0]) allSelects[0].innerHTML = "";
+                if (allSelects[1]) allSelects[1].innerHTML = "";
+
+                args.result.start = args.result.end = null;
+                defaultStartValue = defaultEndValue = "";
+                return;
+            }
+
+            if (currentSelectedDate !== lastProcessedDate) {
+                lastProcessedDate = currentSelectedDate;
+                const newStartOptions = generateAvailableTimeOptions(
+                    currentSelectedDate,
+                    context,
+                    isEdit ? defaultStartValue : undefined,
+                    rawData.id,
+                    true
+                );
+
+                // Вызываем наше ядро оптимизации
+                refreshTimeSelects(modalRoot, currentSelectedDate, newStartOptions);
+                args.result.start = defaultStartValue;
+                args.result.end = defaultEndValue;
+            } else {
+                if (args.result.start) defaultStartValue = args.result.start;
+                if (args.result.end) defaultEndValue = args.result.end;
+            }
+        },
+
         onShow: (args) => {
             setTimeout(() => {
-                // Находим нативные селекты в DOM по их именам
-                const startSelect = args.root.querySelector('select[name="start"]') as HTMLSelectElement | null;
-                const endSelect = args.root.querySelector('select[name="end"]') as HTMLSelectElement | null;
+                const modalRoot = args.root || document.querySelector(".modal_default_main") || document.body;
+                const allSelects = modalRoot.querySelectorAll("select");
+                const startSelect = allSelects[0] as HTMLSelectElement | null;
+                const endSelect = allSelects[1] as HTMLSelectElement | null;
+
+                if (startSelect) startSelect.id = "dynamic-start-select";
+                if (endSelect) endSelect.id = "dynamic-end-select";
+
                 let cleanStart = rawData.start ? decodeURIComponent(rawData.start).trim() : "";
                 if (cleanStart.includes("T")) {
-                    cleanStart = cleanStart.split("T")[1].substring(0, 5); // Получим "10:30"
+                    cleanStart = cleanStart.split("T")[1].substring(0, 5);
                 } else if (cleanStart.length > 5) {
-                    cleanStart = cleanStart.substring(0, 5); // Если пришло "10:30:00", обрезаем до "10:30"
+                    cleanStart = cleanStart.substring(0, 5);
                 }
-                if (startSelect && cleanStart) {
-                    startSelect.value = cleanStart;
-                }
-                if (endSelect && defaultEndValue) {
-                    endSelect.value = defaultEndValue;
-                }
+
+                if (startSelect && cleanStart) startSelect.value = cleanStart;
+                if (endSelect && defaultEndValue) endSelect.value = defaultEndValue;
 
                 if (startSelect && endSelect) {
+                    // Слушаем ручное изменение СТАРТА пользователем
                     startSelect.addEventListener('change', function(e: any) {
-                        const selectedStart = e.target.value;
+                        const startField = formModal.find(item => item.id === "start");
+                        const activeStartTimes = startField ? startField.options : [];
+                        const dateInput = modalRoot.querySelector('input[name="date"]') as HTMLInputElement | null;
 
-                        // Пересчитываем массив разрешенных временных точек для ЭНД на основе новой строки старта
-                        const updatedEndOptions = getFilteredEndTimes(selectedStart, allowedStartTimes);
-                        const currentEndValue = endSelect.value;
+                        // Вызываем ядро оптимизации при ручном клике
+                        refreshTimeSelects(
+                            modalRoot,
+                            dateInput ? dateInput.value : lastProcessedDate,
+                            activeStartTimes
+                        );
+                    });
 
-                        // Полностью очищаем старые option из селекта End в DOM
-                        while (endSelect.options.length > updatedEndOptions.length) {
-                            endSelect.remove(endSelect.options.length - 1);
-                        }
-
-                        // Обновляем текущие или создаем строго новые по индексу
-                        updatedEndOptions.forEach((opt, index) => {
-                            let optionElement = endSelect.options[index];
-                            if (!optionElement) {
-                                optionElement = document.createElement('option');
-                                endSelect.add(optionElement);
-                            }
-                            optionElement.value = opt.id;
-                            optionElement.text = opt.name;
-                        });
-                        let newEndValue = ''
-                        const isStillValid = updatedEndOptions.some(o => o.id === currentEndValue);
-                        if (isStillValid) {
-                            newEndValue = currentEndValue; // Оставляем старый выбор пользователя
-                        } else if (updatedEndOptions.length > 0) {
-                            newEndValue= updatedEndOptions[0].id; // Или принудительно ставим минимальный доступный (+30 минут)
-                        }
-                        // Записываем значение напрямую в DOM элемент
-                        endSelect.value = newEndValue;
-                        const event = document.createEvent('HTMLEvents');
-                        event.initEvent('change', true, true);
-                        endSelect.dispatchEvent(event);
+                    // Слушаем изменение только ЭНДа
+                    endSelect.addEventListener('change', function(e: any) {
+                        defaultEndValue = e.target.value;
                     });
                 }
             }, 0);
         }
     };
-    const modal = await DayPilot.Modal.form(formModal, rawData, options);
-    document.removeEventListener('click', handleGlobalClick);
 
+    // Извлекаем чистую дату (YYYY-MM-DD) для инициализации
+    const initialDate = new DayPilot.Date(rawData.date || rawData.start).toString("yyyy-MM-dd");
+    lastProcessedDate = initialDate; // Синхронизируем стартовую точку трекера
+
+    // Вычисляем дефолтное значение СТАРТА (HH:mm) из rawData
+    let defaultStartValue = "";
+    if (rawData.start) {
+        const cleanStart = decodeURIComponent(rawData.start).trim();
+        if (cleanStart.includes("T")) {
+            defaultStartValue = cleanStart.split("T")[1].substring(0, 5);
+        } else if (cleanStart.length > 5) {
+            defaultStartValue = cleanStart.substring(0, 5);
+        } else {
+            defaultStartValue = cleanStart;
+        }
+    }
+
+    // Вычисляем дефолтное значение ОКОНЧАНИЯ (HH:mm) из rawData
+    let defaultEndValue = "";
+    if (rawData.end) {
+        const cleanEnd = decodeURIComponent(rawData.end).trim();
+        if (cleanEnd.includes("T")) {
+            defaultEndValue = cleanEnd.split("T")[1].substring(0, 5);
+        } else if (cleanEnd.length > 5) {
+            defaultEndValue = cleanEnd.substring(0, 5);
+        } else {
+            defaultEndValue = cleanEnd;
+        }
+    }
+
+    // Безопасное заполнение трекера слотов (без лишнего падающего кода)
+    try {
+        if (typeof currentEventTimeSlots !== 'undefined' && Array.isArray(currentEventTimeSlots)) {
+            globalActiveSlots = currentEventTimeSlots;
+        } else {
+            globalActiveSlots = [];
+        }
+    } catch (e) {
+        globalActiveSlots = []; // В случае ошибки оставляем массив безопасным и пустым
+    }
+
+    // Генерируем массив структуры полей формы
+    formModal = getFormModalConfig(initialDate, rawData, isEdit, defaultStartValue, context, globalActiveSlots);
+
+    // Открываем модальное окно DayPilot и ждем действий пользователя (await)
+    const modal = await DayPilot.Modal.form(formModal, rawData, options);
+
+    // Если пользователь нажал "Отмена" или кликнул мимо окна — прекращаем выполнение
     if (modal.canceled) return;
 
+    // Извлекаем чистую финальную дату после закрытия окна
+    const date = new DayPilot.Date(modal.result.date || modal.result.start || initialDate).toString("yyyy-MM-dd");
+
+    // Удаляем глобальный слушатель кликов, если он использовался
+    document.removeEventListener('click', handleGlobalClick);
+
+    // Сборка значений времени из гарантированно обновляемых локальных трекеров
+    const finalStart = modal.result.start || defaultStartValue;
+    const finalEnd = modal.result.end || defaultEndValue;
+
+    // Формируем финальный идеальный JSON-объект параметров
     const params = {
         id: isEdit ? rawData.id : DayPilot.guid(),
         name: String(modal.result.name || ''),
         phone: String(modal.result.phone || ''),
-        // Убеждаемся, что здесь только строки
-        start: dateStr + "T" + String(modal.result.start),
-        end: dateStr + "T" + String(externalFinalResult?.end),
+        start: date + "T" + String(finalStart),
+        end: date + "T" + String(finalEnd),
         note: String(modal.result.note || ''),
         color: String(modal.result.colorCustom || ''),
+        date: date,
     };
+
     if (isEdit) {
         router.patch(route('events.update', { id: params.id }), params, {
             onSuccess: () => {
