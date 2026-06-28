@@ -101,7 +101,7 @@ watch(flashError, (newValue) => {
                                                 type="button"
                                                 class="inline-flex items-center rounded-md border border-transparent bg-white px-3 py-2 text-sm font-medium leading-4 text-gray-500 transition duration-150 ease-in-out hover:text-gray-700 focus:outline-none dark:bg-gray-800 dark:text-gray-400 dark:hover:text-gray-300"
                                             >
-                                                {{ $page.props.auth.user?.name }}
+                                                {{ $page.props.auth.user ? $page.props.auth.user.name : 'Гость' }}
 
                                                 <svg
                                                     class="-me-0.5 ms-2 h-4 w-4"
@@ -120,18 +120,29 @@ watch(flashError, (newValue) => {
                                     </template>
 
                                     <template #content>
-                                        <DropdownLink
-                                            :href="route('profile.edit')"
-                                        >
-                                            Profile
-                                        </DropdownLink>
-                                        <DropdownLink
-                                            :href="route('logout')"
-                                            method="post"
-                                            as="button"
-                                        >
-                                            Log Out
-                                        </DropdownLink>
+                                       <template v-if="$page.props.auth.user">
+                                           <DropdownLink
+                                               :href="route('profile.edit')"
+                                           >
+                                               Profile
+                                           </DropdownLink>
+                                           <DropdownLink v-if="!isAdmin"
+                                                         :href="route('balance.index')"
+                                           >Баланс
+                                           </DropdownLink>
+                                           <DropdownLink
+                                               :href="route('logout')"
+                                               method="post"
+                                               as="button"
+                                           >
+                                               Log Out
+                                           </DropdownLink>
+                                       </template>
+                                        <template v-else>
+                                            <DropdownLink :href="route('login')">
+                                                Log In
+                                            </DropdownLink>
+                                        </template>
                                     </template>
                                 </Dropdown>
                             </div>
@@ -201,27 +212,36 @@ watch(flashError, (newValue) => {
                     <div
                         class="border-t border-gray-200 pb-1 pt-4 dark:border-gray-600"
                     >
-                        <div class="px-4">
-                            <div
-                                class="text-base font-medium text-gray-800 dark:text-gray-200"
-                            >
-                                {{ $page.props.auth.user?.name }}
+                        <!-- Если пользователь вошел -->
+                        <div v-if="$page.props.auth.user">
+                            <div class="px-4">
+                                <div
+                                    class="text-base font-medium text-gray-800 dark:text-gray-200"
+                                >
+                                    {{ $page.props.auth.user?.name }}
+                                </div>
+                                <div class="text-sm font-medium text-gray-500">
+                                    {{ $page.props.auth.user?.email }}
+                                </div>
                             </div>
-                            <div class="text-sm font-medium text-gray-500">
-                                {{ $page.props.auth.user?.email }}
+
+                            <div class="mt-3 space-y-1">
+                                <ResponsiveNavLink :href="route('profile.edit')">
+                                    Profile
+                                </ResponsiveNavLink>
+                                <ResponsiveNavLink
+                                    :href="route('logout')"
+                                    method="post"
+                                    as="button"
+                                >
+                                    Log Out
+                                </ResponsiveNavLink>
                             </div>
                         </div>
-
-                        <div class="mt-3 space-y-1">
-                            <ResponsiveNavLink :href="route('profile.edit')">
-                                Profile
-                            </ResponsiveNavLink>
-                            <ResponsiveNavLink
-                                :href="route('logout')"
-                                method="post"
-                                as="button"
-                            >
-                                Log Out
+                        <!-- Если пользователь вышел -->
+                        <div v-else class="mt-3 space-y-1">
+                            <ResponsiveNavLink :href="route('login')">
+                                Log In
                             </ResponsiveNavLink>
                         </div>
                     </div>

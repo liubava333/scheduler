@@ -5,9 +5,11 @@ use App\Http\Controllers\Admin\EventCellsController;
 use App\Http\Controllers\Admin\EventsController;
 use App\Http\Controllers\Admin\HoursController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\StripeController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
+use App\Http\Controllers\BalanceController;
 
 Route::get('/', function () {
     return Inertia::render('Welcome', [
@@ -51,6 +53,20 @@ Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+});
+
+Route::middleware(['auth'])->group(function () {
+    Route::get('/payment/success', [StripeController::class, 'success'])->name('payment.success');
+    Route::get('/payment/cancel', function () {
+        return redirect()->route('balance.index')->with('error', 'Оплату скасовано.');
+    })->name('payment.cancel');
+});
+
+Route::middleware(['auth', 'verified'])->group(function () {
+    Route::get('/balance', [BalanceController::class, 'index'])->name('balance.index');
+});
+Route::middleware(['auth'])->group(function () {
+    Route::post('/payment/create-checkout-session', [StripeController::class, 'createSession']);
 });
 
 require __DIR__.'/auth.php';
