@@ -53,6 +53,7 @@ class AuthenticatedSessionController extends Controller
 
         $request->session()->regenerateToken();
 
-        return redirect('/');
+        // Inertia должна полностью перезагрузить страницу на логин
+        return redirect()->route('login');
     }
 }

@@ -1,22 +1,24 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onUnmounted } from 'vue';
 import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 import Dropdown from '@/Components/Dropdown.vue';
 import DropdownLink from '@/Components/DropdownLink.vue';
 import NavLink from '@/Components/NavLink.vue';
 import ResponsiveNavLink from '@/Components/ResponsiveNavLink.vue';
-import { Link } from '@inertiajs/vue3';
-import { usePage } from '@inertiajs/vue3';
+import { Link, usePage, router } from '@inertiajs/vue3';
 
 const page = usePage();
+
 // Получаем данные из Laravel props
 const flashSuccess = computed(() => page.props.flash?.success);
 const flashError = computed(() => page.props.flash?.error);
 const showingNavigationDropdown = ref(false);
+
 const isAdmin = computed(() => {
     const user = page.props.auth?.user;
     return !!user?.name && user?.role === 'admin';
 });
+
 // Состояние видимости для каждого типа сообщения
 const isSuccessVisible = ref(false);
 const isErrorVisible = ref(false);
@@ -58,6 +60,11 @@ watch(flashError, (newValue) => {
         }, 4000);
     }
 }, { immediate: true });
+// Очищаем таймеры при уничтожении компонента, чтобы избежать утечек памяти
+onUnmounted(() => {
+    if (successTimeout) clearTimeout(successTimeout);
+    if (errorTimeout) clearTimeout(errorTimeout);
+});
 </script>
 
 <template>
@@ -230,8 +237,7 @@ watch(flashError, (newValue) => {
                                     Profile
                                 </ResponsiveNavLink>
                                 <ResponsiveNavLink
-                                    :href="route('logout')"
-                                    method="post"
+                                    :href="route('logout')" method="post"
                                     as="button"
                                 >
                                     Log Out
