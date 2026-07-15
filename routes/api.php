@@ -14,3 +14,19 @@ Route::get('/stripe/session-status/{sessionId}', [StripeController::class, 'getS
 
 Route::post('/webhook', [StripeWebhookController::class, 'handleWebhook']);
 
+// routes/api.php
+Route::middleware('auth:sanctum')->get('/user/balance', function (Request $request) {
+    return response()->json([
+        'balance' => $request->user()->balance,
+        'tariff_name' => 'Premium Single'
+    ]);
+});
+//// routes/web.php   не помню для чого це!!!
+//Route::middleware(['auth'])->get('/balance', function (Request $request) {
+//    return Inertia::render('Balance', [
+//        'payment' => [
+//            'balance' => $request->user()->balance,
+//            'tariff_name' => 'Premium Single'
+//        ]
+//    ]);
+//});

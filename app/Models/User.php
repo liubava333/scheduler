@@ -33,4 +33,33 @@ class User extends Authenticatable
             'is_paid' => 'boolean',
         ];
     }
+
+    /**
+     * Виртуальное пополнение баланса с автоматическим пересчетом остатка к оплате.
+     */
+    public function deposit(float $amount): bool
+    {
+        if ($amount <= 0) {
+            return false;
+        }
+
+        // 1. Безопасно увеличиваем баланс в базе данных (защита от race condition)
+        $this->increment('balance', $amount);
+
+        // 2. Обновляем текущую модель актуальными данными из БД
+        $this->refresh();
+
+        // 3. Считаем разницу: цена тарифа минус новый баланс
+        $diff = $this->tariff_price - $this->balance;
+
+        // 4. Применяем ваше условие:
+        // Если разница меньше или равна 0 (баланс больше или равен тарифу) -> пишем 0
+        // Если разница больше 0 (баланса не хватает) -> пишем эту разницу
+        $newAmountToPay = $diff > 0 ? $diff : 0;
+
+        // 5. Записываем результат в поле amount_to_pay
+        return $this->update([
+            'amount_to_pay' => $newAmountToPay
+        ]);
+    }
 }
