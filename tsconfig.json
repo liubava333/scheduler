@@ -2,8 +2,11 @@
     "compilerOptions": {
         "allowJs": true,
         "module": "ESNext",
-        "moduleResolution": "bundler",
+        "moduleResolution": "node",
         "jsx": "preserve",
+        "sourceMap": true,
+        "resolveJsonModule": true,
+        "lib": ["ESNext", "DOM"],
         "strict": true,
         "isolatedModules": true,
         "target": "ESNext",
@@ -11,10 +14,12 @@
         "forceConsistentCasingInFileNames": true,
         "noEmit": true,
         "skipLibCheck": true,
+        "baseUrl": ".",
         "paths": {
-            "@/*": ["./resources/js/*"],
-            "ziggy-js": ["./vendor/tightenco/ziggy"]
+            "@/*": ["resources/js/*"],
+            "ziggy-js": ["vendor/tightenco/ziggy/dist/index.d.ts"]
         }
     },
-    "include": ["resources/js/**/*.ts", "resources/js/**/*.vue"]
+    "include": ["resources/js/**/*.ts", "resources/js/**/*.vue", "resources/js/**/*.d.ts"],
+    "exclude": ["node_modules", "public"]
 }
