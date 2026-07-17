@@ -502,7 +502,7 @@ const open = async (data: any, validationContext = { eventCells: [], additionalC
         start: date + "T" + String(finalStart),
         end: date + "T" + String(finalEnd),
         note: String(modal.result.note || ''),
-        color: randomColor,
+        color: String(modal.result.colorCustom || randomColor),
         date: date,
     };
 
