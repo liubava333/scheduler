@@ -379,6 +379,19 @@ const open = async (data: any, validationContext = { eventCells: [], additionalC
         onShow: (args) => {
             setTimeout(() => {
                 const modalRoot = args.root || document.querySelector(".modal_default_main") || document.body;
+                // Находим ваш кастомный элемент в DOM модального окна
+                const customDropdown = modalRoot.querySelector(".custom-dropdown") as HTMLElement | null;
+
+                if (customDropdown) {
+                    if (rawData.isAdmin === false) {
+                        // Находим всю строку формы (чтобы скрыть и название "Color", и сам дропдаун)
+                        const formRow = customDropdown.closest(".modal_default_form_item") || customDropdown;
+                        (formRow as HTMLElement).style.display = "none";
+                    } else {
+                        const formRow = customDropdown.closest(".modal_default_form_item") || customDropdown;
+                        (formRow as HTMLElement).style.display = ""; // Возвращаем стандартное отображение
+                    }
+                }
                 const allSelects = modalRoot.querySelectorAll("select");
                 const startSelect = allSelects[0] as HTMLSelectElement | null;
                 const endSelect = allSelects[1] as HTMLSelectElement | null;
@@ -479,6 +492,7 @@ const open = async (data: any, validationContext = { eventCells: [], additionalC
     // Сборка значений времени из гарантированно обновляемых локальных трекеров
     const finalStart = modal.result.start || defaultStartValue;
     const finalEnd = modal.result.end || defaultEndValue;
+    const randomColor = COLORS[Math.floor(Math.random() * COLORS.length)].id;
 
     // Формируем финальный идеальный JSON-объект параметров
     const params = {
@@ -488,7 +502,7 @@ const open = async (data: any, validationContext = { eventCells: [], additionalC
         start: date + "T" + String(finalStart),
         end: date + "T" + String(finalEnd),
         note: String(modal.result.note || ''),
-        color: String(modal.result.colorCustom || ''),
+        color: randomColor,
         date: date,
     };
 
@@ -514,3 +528,8 @@ defineExpose({ open });
 <template>
 
 </template>
+<style>
+.modal_default_main .modal_default_form_item textarea, input {
+    margin-left: 0px !important;
+}
+</style>

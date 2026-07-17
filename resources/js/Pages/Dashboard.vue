@@ -78,6 +78,7 @@ const config = reactive({
             date: cellValue,
             start: args.start.toString("HH:mm"),
             end: args.start.addMinutes(30).toString("HH:mm"),
+            isAdmin: true
         };
 
         eventModalRef.value.open(modalData.value, {
@@ -193,7 +194,8 @@ const config = reactive({
             start: event.data.start.toString("HH:mm"),
             end: event.data.end.toString("HH:mm"),
             note: event.data.note,
-            colorCustom: event.data.color
+            colorCustom: event.data.color,
+            isAdmin: true
         };
 
         eventModalRef.value.open({modalData}, {
