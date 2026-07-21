@@ -4,7 +4,6 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Laravel\Sanctum\HasApiTokens;
-use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -43,23 +42,30 @@ class User extends Authenticatable
             return false;
         }
 
-        // 1. Безопасно увеличиваем баланс в базе данных (защита от race condition)
+        // 1. Безпечно збільшуємо баланс в БД (захист від race condition)
         $this->increment('balance', $amount);
-
-        // 2. Обновляем текущую модель актуальными данными из БД
         $this->refresh();
 
-        // 3. Считаем разницу: цена тарифа минус новый баланс
+        // 2. Рахуємо різницю між ціною тарифу та поточним балансом
         $diff = $this->tariff_price - $this->balance;
+        if ($diff <= 0) {
+            // ВИПАДОК 1: Балансу достатньо для оплати тарифу
+            // Списуємо гроші з балансу на оплату тарифу (баланс зменшується на ціну тарифу)
+            $newBalance = $this->balance - $this->tariff_price;
+            $newAmountToPay = 0;
+            $isPaid = true;
+        } else {
+            // ВИПАДОК 2: Балансу все ще не вистачає
+            $newBalance = $this->balance; // Гроші залишаються на балансі
+            $newAmountToPay = $diff;       // Треба доплатити різницю
+            $isPaid = false;
+        }
 
-        // 4. Применяем ваше условие:
-        // Если разница меньше или равна 0 (баланс больше или равен тарифу) -> пишем 0
-        // Если разница больше 0 (баланса не хватает) -> пишем эту разницу
-        $newAmountToPay = $diff > 0 ? $diff : 0;
-
-        // 5. Записываем результат в поле amount_to_pay
+        // 3. Записуємо всі оновлені дані в базу
         return $this->update([
-            'amount_to_pay' => $newAmountToPay
+            'balance'       => $newBalance,
+            'amount_to_pay' => $newAmountToPay,
+            'is_paid'       => $isPaid,
         ]);
     }
 }

@@ -64,6 +64,7 @@ Route::middleware(['auth'])->group(function () {
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/balance', [BalanceController::class, 'index'])->name('balance.index');
+    Route::get('/api/stripe/session-status/{sessionId}', [StripeController::class, 'getSessionStatus']);
 });
 Route::middleware(['auth'])->group(function () {
     Route::post('/payment/create-checkout-session', [StripeController::class, 'createSession']);

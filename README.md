@@ -132,7 +132,16 @@ echo $user->balance;       // Выведет: 50.00
 echo $user->amount_to_pay; // Выведет: 100.00 (150.00 - 50.00)
 ```
 
-#### 4. automatically clean up expired or outdated additional cells:
+#### 4. Pay for tariff
+In test mode:
+Run the following command (replace with your actual STRIPE_API_KEY):
+```bash
+docker compose run --rm -e STRIPE_API_KEY=sk_test_51T*** stripe listen --forward-to laravel.test/api/webhook
+```
+The command will generate a STRIPE_WEBHOOK_SECRET (e.g., whsec_4ef7f67***). Copy and paste this value 
+into your .env file and save it.Go to the 'Balance' page and complete the payment.
+
+#### 5. automatically clean up expired or outdated additional cells:
 ```bash
 ./vendor/bin/sail artisan additionalCells:clean
 ```
